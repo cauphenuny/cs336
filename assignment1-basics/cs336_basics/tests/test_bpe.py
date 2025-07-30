@@ -1,6 +1,7 @@
 from cs336_basics import Tokenizer, train_bpe
 from utils import TempStringFile
 import time
+import argparse
 
 
 def test_train_bpe_small():
@@ -34,7 +35,11 @@ def test_train_bpe(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file_path", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
+    parser.add_argument("--vocab_size", type=int, default=10000)
+    parser.add_argument("--num_processes", type=int, default=None, help="Number of processes to use for training BPE")
+    args = parser.parse_args()
+
     test_train_bpe_small()
-    # test_train_bpe(file_path="data/owt_train.txt", vocab_size=32000, num_processes=1)
-    # test_train_bpe(vocab_size=32000)
-    test_train_bpe(file_path="data/owt_valid.txt", vocab_size=5000)
+    test_train_bpe(file_path=args.file_path, vocab_size=args.vocab_size, num_processes=args.num_processes)
