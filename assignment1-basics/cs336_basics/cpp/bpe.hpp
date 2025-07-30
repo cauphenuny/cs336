@@ -64,7 +64,6 @@ encode(const py::list& words, const py::list& merges, const py::dict& vocab, int
         words_vec.push_back(word_tokens);
     }
     merged_words.resize(words_vec.size());
-    // #pragma omp parallel for
     transform(
         words_vec,
         [merges_rank](std::vector<std::string> word) {
@@ -190,24 +189,24 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         Bytes new_vocab = merge_pair.first + merge_pair.second;
         vocab[vocab.size()] = new_vocab;
 
-        std::vector<Word> update_words;
-        std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pairs;
+        std::vector<std::pair<Word, Word>> update_word;
+        std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pair;
 
-        for (auto it = word_counts.begin(); it != word_counts.end();) {
+        for (auto it = word_counts.begin(); it != word_counts.end(); it++) {
             const Word& word = it->first;
             Word new_word;
             Bytes last;
-            int count = it->second, matched = 0;
-            for (size_t index = 0; index + 1 < word.size(); ++index) {
-                if (std::make_pair(word[index], word[index + 1]) == merge_pair) {
-                    matched = 1;
-                    update_pairs.emplace_back(merge_pair, std::nullopt, count);
+            int count = it->second;
+            for (size_t index = 0; index < word.size(); ++index) {
+                if (index + 1 < word.size() &&
+                    std::make_pair(word[index], word[index + 1]) == merge_pair) {
+                    update_pair.emplace_back(merge_pair, std::nullopt, count);
                     if (index > 0) {
-                        update_pairs.emplace_back(
+                        update_pair.emplace_back(
                             Pair{last, word[index]}, Pair{last, new_vocab}, count);
                     }
                     if (index + 2 < word.size()) {
-                        update_pairs.emplace_back(
+                        update_pair.emplace_back(
                             Pair{word[index + 1], word[index + 2]},
                             Pair{new_vocab, word[index + 2]}, count);
                     }
@@ -219,19 +218,19 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
                     last = word[index];
                 }
             }
-            if (matched) update_words.push_back(word);
-            ++it;
+            if (word != new_word) update_word.emplace_back(word, new_word);
         }
 
+        if (!update_word.size()) continue;
+
         // 更新 word_counts
-        for (const auto& word : update_words) {
-            auto new_word = merge_token(word, merge_pair);
+        for (const auto& [word, new_word] : update_word) {
             word_counts[new_word] += word_counts[word];
             word_counts.erase(word);
         }
 
         // 更新 pair_counts
-        for (const auto& [pair, new_pair_opt, count] : update_pairs) {
+        for (const auto& [pair, new_pair_opt, count] : update_pair) {
             pair_counts[pair] -= count;
             if (pair_counts[pair] <= 0) pair_counts.erase(pair);
             if (new_pair_opt) {
