@@ -1,0 +1,128 @@
+import os
+import multiprocessing
+import regex as re
+from tqdm import tqdm
+from typing import BinaryIO
+from collections import Counter
+from functools import partial
+
+
+def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
+    """
+    Chunk the file into parts that can be counted independently.
+    May return fewer chunks if the boundaries end up overlapping.
+    """
+
+    """
+    usage:
+    with open(..., "rb") as f:
+        boundaries = find_chunk_boundaries(
+            f, num_processes, "<|endoftext|>".encode("utf-8"))
+
+        # The following is a serial implementation, but you can parallelize this 
+        # by sending each start/end pair to a set of processes.
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+            # Run pre-tokenization on your chunk and store the counts for each pre-token
+    """
+    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+
+    # Get total file size in bytes
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+
+    chunk_size = file_size // desired_num_chunks
+
+    # Initial guesses for chunk boundary locations, uniformly spaced
+    # Chunks start on previous index, don't include last index
+    chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
+    chunk_boundaries[-1] = file_size
+
+    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
+
+    for bi in range(1, len(chunk_boundaries) - 1):
+        initial_position = chunk_boundaries[bi]
+        file.seek(initial_position)  # Start at boundary guess
+        while True:
+            mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
+
+            # If EOF, this boundary should be at the end of the file
+            if mini_chunk == b"":
+                chunk_boundaries[bi] = file_size
+                break
+
+            # Find the special token in the mini chunk
+            found_at = mini_chunk.find(split_special_token)
+            if found_at != -1:
+                chunk_boundaries[bi] = initial_position + found_at
+                break
+            initial_position += mini_chunk_size
+
+    # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
+    return sorted(set(chunk_boundaries))
+
+
+def count_word(text_with_id: tuple[int, str], pattern: str, special_tokens: list[str]) -> dict[bytes, int]:
+    proc_id, text = text_with_id
+    splited_text = re.split("|".join(re.escape(s) for s in special_tokens), text)
+    counter: dict[bytes, int] = {}
+    pretokenizer = re.compile(pattern)
+    for segment in tqdm(splited_text, position=proc_id, desc=f"Chunk #{proc_id}"):
+        for word in pretokenizer.finditer(segment):
+            decoded = word.group(0).encode("utf-8")
+            counter[decoded] = counter.get(decoded, 0) + 1
+    return counter
+
+
+WORD_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+
+def pretokenize_corpus(
+    file_path: str | os.PathLike, special_tokens: list[str], num_processes: int | None = None
+) -> Counter[tuple[bytes, ...]]:
+    word_counts: Counter[tuple[bytes, ...]] = Counter()
+    with open(file_path, "rb") as f:
+        num_processes = num_processes or os.cpu_count() or 1
+        boundaries = find_chunk_boundaries(f, os.cpu_count() or 1, special_tokens[0].encode("utf-8"))
+        chunks: list[str] = []
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+            chunks.append(chunk)
+        if num_processes > 1:
+            with multiprocessing.Pool(num_processes) as pool:
+                for chunked_word_count in pool.imap(
+                    partial(count_word, pattern=WORD_PATTERN, special_tokens=special_tokens),
+                    enumerate(chunks),
+                ):
+                    word_counts.update({tuple(bytes([b]) for b in k): v for k, v in chunked_word_count.items()})
+        else:
+            for chunked_word_count in map(
+                partial(count_word, pattern=WORD_PATTERN, special_tokens=special_tokens), enumerate(chunks)
+            ):
+                for k, v in chunked_word_count.items():
+                    word_counts[tuple(bytes([b]) for b in k)] += v
+
+    print(f"Pretokenized, {len(word_counts)} unique words, {sum(word_counts.values())} total words")
+    return word_counts
+
+
+def pretokenize(text: str, special_tokens: list[str]) -> list[tuple[bytes, ...]]:
+    if special_tokens:
+        special_tokens = sorted(special_tokens, key=len, reverse=True)
+        pattern = "(" + "|".join(re.escape(s) for s in special_tokens) + ")"
+        # print(f"Using special tokens: {special_tokens}, pattern: {pattern}")
+        chunked_text = re.split(pattern, text)
+    else:
+        chunked_text = [text]
+    pretokenizer = re.compile(WORD_PATTERN)
+    words: list[tuple[bytes, ...]] = []
+    for chunk in chunked_text:
+        if chunk in special_tokens:
+            words.append((chunk.encode("utf-8"),))
+        else:
+            for match in pretokenizer.findall(chunk):
+                words.append(tuple(bytes([b]) for b in match.encode("utf-8")))
+    return words
