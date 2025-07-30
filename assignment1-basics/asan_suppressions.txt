@@ -1,0 +1,19 @@
+# AddressSanitizer 抑制文件
+# 用于忽略一些已知的误报
+
+# Python 相关的抑制
+leak:PyObject_Call
+leak:PyEval_EvalFrameDefault
+leak:PyObject_GC_New
+leak:PyObject_GC_NewVar
+leak:PyObject_GC_Resize
+
+# pybind11 相关的抑制
+leak:pybind11::detail::type_info
+leak:pybind11::detail::function_record
+leak:pybind11::detail::type_record
+
+# 标准库相关的抑制
+leak:std::__1::basic_string
+leak:std::__1::vector
+leak:std::__1::__tree_node 

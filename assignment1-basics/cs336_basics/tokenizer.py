@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Iterable
 from tqdm import tqdm
 from bidict import bidict
+from cs336_basics import cpp_extensions
 import os
 import pickle
 from . import pretokenization
@@ -91,7 +92,8 @@ class Tokenizer:
     def __init__(
         self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None
     ):
-        self.vocab = bidict(vocab)
+        self.vocab = vocab
+        self.inverse_vocab = {b: i for i, b in vocab.items()}
         self.merges = merges
         self.special_tokens = special_tokens or []
         for special in self.special_tokens:
@@ -114,15 +116,17 @@ class Tokenizer:
 
     def encode(self, text: str):
         words = pretokenization.pretokenize(text, self.special_tokens)
-        tokens: list[bytes] = []
+        # tokens: list[bytes] = []
 
-        for word in words:
-            for merge_pair in self.merges:
-                word = self._merge(word, merge_pair)
-            for token in word:
-                tokens.append(token)
+        # for word in words:
+        #     for merge_pair in self.merges:
+        #         word = self._merge(word, merge_pair)
+        #     for token in word:
+        #         tokens.append(token)
 
-        return [self.vocab.inv[tok] for tok in tokens]
+        # return [self.vocab.inv[tok] for tok in tokens]
+        num_threads = os.cpu_count() or 1
+        return cpp_extensions.encode_bpe(words, self.merges, self.inverse_vocab, num_threads)
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
         for text in iterable:

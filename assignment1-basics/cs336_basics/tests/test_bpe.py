@@ -17,7 +17,7 @@ def test_train_bpe(file_path: str = "data/TinyStoriesV2-GPT4-train.txt", vocab_s
     Test the BPE training on a larger dataset.
     """
     tokenizer = Tokenizer.from_train(
-        input_path=file_path, vocab_size=vocab_size, special_tokens=["<|endoftext|>"], num_processes=None
+        input_path=file_path, vocab_size=vocab_size, special_tokens=["<|endoftext|>"], num_processes=1
     )
     # print(f"{tokenizer.vocab = }, {tokenizer.merges = }")
     tokenizer.serialize(file_path.replace(".txt", f"-tokenizer-{vocab_size}.txt"))
@@ -29,4 +29,4 @@ def test_train_bpe(file_path: str = "data/TinyStoriesV2-GPT4-train.txt", vocab_s
 
 if __name__ == "__main__":
     test_train_bpe_small()
-    test_train_bpe(vocab_size=32000)
+    test_train_bpe(file_path="data/owt_train.txt", vocab_size=32000)

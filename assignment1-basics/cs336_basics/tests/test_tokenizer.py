@@ -10,6 +10,20 @@ def duration(func):
     return (end - start, ret)
 
 
+def test_tokenizer_simple():
+    specials = ["<|endoftext|>"]
+    tokenizer_10k = cs336_basics.Tokenizer.from_files(
+        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.pkl",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.pkl",
+        specials,
+    )
+    test_string = "Hello, how are you?"
+    encoded_ids = tokenizer_10k.encode(test_string)
+    print(f"{tokenizer_10k.partial_decode(encoded_ids)}")
+    decoded_string = tokenizer_10k.decode(encoded_ids)
+    assert test_string == decoded_string
+
+
 def test_tokenizer(test_filepath: str = "data/TinyStoriesV2-GPT4-valid.txt"):
     specials = ["<|endoftext|>"]
     tokenizer_10k = cs336_basics.Tokenizer.from_files(
@@ -25,8 +39,8 @@ def test_tokenizer(test_filepath: str = "data/TinyStoriesV2-GPT4-valid.txt"):
     with open(test_filepath) as f:
         lines = f.readlines()
 
-    sampled = random.sample(lines, 50)
-    print(f"Sampled lines: {sampled}")
+    sampled = random.sample(lines, 100000)
+    # print(f"Sampled lines: {sampled}")
     time_10k, encoded_10k = duration(lambda: tokenizer_10k.encode("".join(sampled)))
     time_32k, encoded_32k = duration(lambda: tokenizer_32k.encode("".join(sampled)))
     original_len = len("".join(sampled).encode("utf-8"))
@@ -37,5 +51,6 @@ def test_tokenizer(test_filepath: str = "data/TinyStoriesV2-GPT4-valid.txt"):
 
 
 if __name__ == "__main__":
-    test_tokenizer()
-    # test_tokenizer("data/owt_valid.txt")
+    test_tokenizer_simple()
+    # test_tokenizer()
+    test_tokenizer("data/owt_valid.txt")
