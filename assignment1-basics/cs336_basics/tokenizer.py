@@ -5,7 +5,7 @@ from tqdm import tqdm
 from bidict import bidict
 from cs336_basics import cpp_extensions
 import os
-import pickle
+import json
 from . import pretokenization
 
 
@@ -18,7 +18,6 @@ def train_bpe(
     vocab: dict[int, bytes] = {i: s.encode("utf-8") for i, s in enumerate(special_tokens)}
     for i in range(256):
         vocab[len(vocab)] = bytes([i])
-    merges: list[tuple[bytes, bytes]] = []
 
     word_counts: Counter[tuple[bytes, ...]] = pretokenization.pretokenize_corpus(
         input_path, special_tokens, num_processes
@@ -31,16 +30,14 @@ def train_bpe(
         for i in range(len(word) - 1):
             pair_counts[(word[i], word[i + 1])] += count
 
+    return cpp_extensions.train_bpe(vocab, dict(word_counts), dict(pair_counts), vocab_size)
+    """
     with tqdm(total=vocab_size, desc="Training BPE") as pbar:
         while len(vocab) < vocab_size:
             if not pair_counts:
                 break
             sorted_counts = sorted(pair_counts.items(), key=lambda e: (e[1], e[0]), reverse=True)
-            # print(f"{word_counts = }")
-            # print(f"{sorted_counts = }")
-            # print(f"{pair_counts = }")
             best_pair, _best_count = sorted_counts[0]
-            # print(f"{best_pair = }")
             merges.append((best_pair[0], best_pair[1]))
             new_vocab = best_pair[0] + best_pair[1]
             vocab[len(vocab)] = new_vocab
@@ -64,9 +61,6 @@ def train_bpe(
                                     (((word[index + 1], word[index + 2]), (new_vocab, word[index + 2])), count)
                                 )
                             break
-
-                # print(f"{update_word = }, {update_pair = }")
-
                 if not update_word:
                     break
 
@@ -86,6 +80,7 @@ def train_bpe(
             pbar.refresh()
 
     return vocab, merges
+    """
 
 
 class Tokenizer:
@@ -166,14 +161,14 @@ class Tokenizer:
     def from_files(
         vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike, special_tokens: list[str] | None = None
     ) -> "Tokenizer":
-        with open(vocab_filepath, "rb") as f:
-            vocab = pickle.load(f)
-        with open(merges_filepath, "rb") as f:
-            merges = pickle.load(f)
+        with open(vocab_filepath) as f:
+            vocab = json.load(f)
+        with open(merges_filepath) as f:
+            merges = json.load(f)
         return Tokenizer(vocab, merges, special_tokens)
 
     def to_files(self, vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike) -> None:
-        with open(vocab_filepath, "wb") as f:
-            pickle.dump(self.vocab, f)
-        with open(merges_filepath, "wb") as f:
-            pickle.dump(self.merges, f)
+        with open(vocab_filepath, "w") as f:
+            json.dump(self.vocab, f, ensure_ascii=False, indent=2)
+        with open(merges_filepath, "w") as f:
+            json.dump(self.merges, f, ensure_ascii=False, indent=2)

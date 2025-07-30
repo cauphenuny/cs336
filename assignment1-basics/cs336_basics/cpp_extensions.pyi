@@ -6,7 +6,9 @@ def hello() -> None:
     """A function that prints a hello message."""
     ...
 
-def encode_bpe(input: list[tuple[bytes, ...]], merges: list[tuple[bytes, bytes]], vocab: dict[bytes, int], num_threads: int) -> list[int]:
+def encode_bpe(
+    input: list[tuple[bytes, ...]], merges: list[tuple[bytes, bytes]], vocab: dict[bytes, int], num_threads: int
+) -> list[int]:
     """
     Encodes a list of byte tuples using BPE merges and a vocabulary.
 
@@ -19,3 +21,10 @@ def encode_bpe(input: list[tuple[bytes, ...]], merges: list[tuple[bytes, bytes]]
         A list of integer IDs corresponding to the encoded tokens.
     """
     ...
+
+def train_bpe(
+    vocab: dict[int, bytes],
+    word_counts: dict[tuple[bytes, ...], int],
+    pair_counts: dict[tuple[bytes, bytes], int],
+    vocab_size: int,
+) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]: ...

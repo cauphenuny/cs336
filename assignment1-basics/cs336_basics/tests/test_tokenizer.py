@@ -13,11 +13,11 @@ def duration(func):
 def test_tokenizer_simple():
     specials = ["<|endoftext|>"]
     tokenizer_10k = cs336_basics.Tokenizer.from_files(
-        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.pkl",
-        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.pkl",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.json",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.json",
         specials,
     )
-    test_string = "Hello, how are you?"
+    test_string = "Hello, World!"
     encoded_ids = tokenizer_10k.encode(test_string)
     print(f"{tokenizer_10k.partial_decode(encoded_ids)}")
     decoded_string = tokenizer_10k.decode(encoded_ids)
@@ -27,19 +27,19 @@ def test_tokenizer_simple():
 def test_tokenizer(test_filepath: str = "data/TinyStoriesV2-GPT4-valid.txt"):
     specials = ["<|endoftext|>"]
     tokenizer_10k = cs336_basics.Tokenizer.from_files(
-        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.pkl",
-        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.pkl",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.json",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.json",
         specials,
     )
     tokenizer_32k = cs336_basics.Tokenizer.from_files(
-        "data/TinyStoriesV2-GPT4-train-tokenizer-32000-vocab.pkl",
-        "data/TinyStoriesV2-GPT4-train-tokenizer-32000-merges.pkl",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-32000-vocab.json",
+        "data/TinyStoriesV2-GPT4-train-tokenizer-32000-merges.json",
         specials,
     )
     with open(test_filepath) as f:
         lines = f.readlines()
 
-    sampled = random.sample(lines, 100000)
+    sampled = random.sample(lines, 200000)
     # print(f"Sampled lines: {sampled}")
     time_10k, encoded_10k = duration(lambda: tokenizer_10k.encode("".join(sampled)))
     time_32k, encoded_32k = duration(lambda: tokenizer_32k.encode("".join(sampled)))

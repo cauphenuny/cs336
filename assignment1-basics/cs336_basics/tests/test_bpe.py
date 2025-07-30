@@ -9,24 +9,28 @@ test test test test test <|endoftext|>
     """) as f:
         vocab, merges = train_bpe(f.name, vocab_size=280, special_tokens=["<|endoftext|>"])
         # decoded_vocab = {k: v.decode("utf-8") for k, v in vocab.items()}
-        # print(f"{vocab = }, {merges = }")
+        print(f"{vocab = }, {merges = }")
 
 
-def test_train_bpe(file_path: str = "data/TinyStoriesV2-GPT4-train.txt", vocab_size: int = 10000):
+def test_train_bpe(
+    file_path: str = "data/TinyStoriesV2-GPT4-train.txt", vocab_size: int = 10000, num_processes: int | None = None
+):
     """
     Test the BPE training on a larger dataset.
     """
     tokenizer = Tokenizer.from_train(
-        input_path=file_path, vocab_size=vocab_size, special_tokens=["<|endoftext|>"], num_processes=1
+        input_path=file_path, vocab_size=vocab_size, special_tokens=["<|endoftext|>"], num_processes=num_processes
     )
     # print(f"{tokenizer.vocab = }, {tokenizer.merges = }")
     tokenizer.serialize(file_path.replace(".txt", f"-tokenizer-{vocab_size}.txt"))
     tokenizer.to_files(
-        file_path.replace(".txt", f"-tokenizer-{vocab_size}-vocab.pkl"),
-        file_path.replace(".txt", f"-tokenizer-{vocab_size}-merges.pkl"),
+        file_path.replace(".txt", f"-tokenizer-{vocab_size}-vocab.json"),
+        file_path.replace(".txt", f"-tokenizer-{vocab_size}-merges.json"),
     )
 
 
 if __name__ == "__main__":
     test_train_bpe_small()
-    test_train_bpe(file_path="data/owt_train.txt", vocab_size=32000)
+    # test_train_bpe(file_path="data/owt_train.txt", vocab_size=32000)
+    test_train_bpe(vocab_size=10000)
+    # test_train_bpe()
