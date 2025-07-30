@@ -192,21 +192,33 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         std::vector<std::pair<Word, Word>> update_word;
         std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pair;
 
-        for (auto it = word_counts.begin(); it != word_counts.end(); it++) {
-            const Word& word = it->first;
+        // 将 word_counts 转换为 vector 以便多线程处理
+        std::vector<std::pair<Word, int>> word_counts_vec(word_counts.begin(), word_counts.end());
+
+        // 存储处理结果的容器
+        std::vector<std::pair<
+            std::optional<std::pair<Word, Word>>,
+            std::vector<std::tuple<Pair, std::optional<Pair>, int>>>>
+            results(word_counts_vec.size());
+
+        // 定义处理函数
+        auto process_word = [&merge_pair, &new_vocab](const std::pair<Word, int>& word_count) {
+            const Word& word = word_count.first;
             Word new_word;
             Bytes last;
-            int count = it->second;
+            int count = word_count.second;
+            std::vector<std::tuple<Pair, std::optional<Pair>, int>> local_update_pair;
+
             for (size_t index = 0; index < word.size(); ++index) {
                 if (index + 1 < word.size() &&
                     std::make_pair(word[index], word[index + 1]) == merge_pair) {
-                    update_pair.emplace_back(merge_pair, std::nullopt, count);
+                    local_update_pair.emplace_back(merge_pair, std::nullopt, count);
                     if (index > 0) {
-                        update_pair.emplace_back(
+                        local_update_pair.emplace_back(
                             Pair{last, word[index]}, Pair{last, new_vocab}, count);
                     }
                     if (index + 2 < word.size()) {
-                        update_pair.emplace_back(
+                        local_update_pair.emplace_back(
                             Pair{word[index + 1], word[index + 2]},
                             Pair{new_vocab, word[index + 2]}, count);
                     }
@@ -218,7 +230,42 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
                     last = word[index];
                 }
             }
-            if (word != new_word) update_word.emplace_back(word, new_word);
+
+            return std::make_pair(
+                word != new_word ? std::make_optional(std::make_pair(word, new_word))
+                                 : std::nullopt,
+                local_update_pair);
+        };
+
+        // 使用多线程处理
+        size_t num_threads = std::thread::hardware_concurrency();
+        size_t chunk_size = (word_counts_vec.size() + num_threads - 1) / num_threads;
+
+        std::vector<std::thread> threads;
+        for (size_t t = 0; t < num_threads; ++t) {
+            size_t start = t * chunk_size;
+            size_t end = std::min((t + 1) * chunk_size, word_counts_vec.size());
+            if (start >= end) continue;
+
+            threads.emplace_back([&, start, end]() {
+                for (size_t i = start; i < end; ++i) {
+                    results[i] = process_word(word_counts_vec[i]);
+                }
+            });
+        }
+
+        for (auto& thread : threads) {
+            thread.join();
+        }
+
+        // 合并结果
+        for (const auto& result : results) {
+            if (result.first.has_value()) {
+                update_word.push_back(result.first.value());
+            }
+            for (const auto& pair_update : result.second) {
+                update_pair.push_back(pair_update);
+            }
         }
 
         if (!update_word.size()) continue;

@@ -1,9 +1,10 @@
+#pragma once
 #include <cstddef>
+#include <format>
+#include <iostream>
 #include <iterator>
 #include <thread>
 #include <vector>
-#include <format>
-#include <iostream>
 
 template <typename Container, typename Func>
 void transform(Container& container, Func func, size_t num_threads = 1) {

@@ -37,4 +37,4 @@ if __name__ == "__main__":
     test_train_bpe_small()
     # test_train_bpe(file_path="data/owt_train.txt", vocab_size=32000, num_processes=1)
     # test_train_bpe(vocab_size=32000)
-    test_train_bpe()
+    test_train_bpe(file_path="data/owt_valid.txt", vocab_size=5000)
