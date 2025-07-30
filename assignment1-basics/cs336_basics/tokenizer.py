@@ -5,6 +5,7 @@ from tqdm import tqdm
 from bidict import bidict
 from cs336_basics import cpp_extensions
 import os
+import base64
 import json
 from . import pretokenization
 
@@ -162,13 +163,22 @@ class Tokenizer:
         vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike, special_tokens: list[str] | None = None
     ) -> "Tokenizer":
         with open(vocab_filepath) as f:
-            vocab = json.load(f)
+            encoded_vocab = json.load(f)
+            vocab = {int(k): base64.b64decode(v.encode("ascii")) for k, v in encoded_vocab.items()}
         with open(merges_filepath) as f:
-            merges = json.load(f)
-        return Tokenizer(vocab, merges, special_tokens)
+            encoded_merges = json.load(f)
+            merges = [
+                (base64.b64decode(m[0].encode("ascii")), base64.b64decode(m[1].encode("ascii"))) for m in encoded_merges
+            ]
+        return Tokenizer(vocab, merges, special_tokens)  # type: ignore[return-value]
 
     def to_files(self, vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike) -> None:
+        encoded_vocab = {k: base64.b64encode(v).decode("ascii") for k, v in self.vocab.items()}
+        encoded_merges = [
+            (base64.b64encode(m[0]).decode("ascii"), base64.b64encode(m[1]).decode("ascii")) for m in self.merges
+        ]
+
         with open(vocab_filepath, "w") as f:
-            json.dump(self.vocab, f, ensure_ascii=False, indent=2)
+            json.dump(encoded_vocab, f, ensure_ascii=True, indent=2)
         with open(merges_filepath, "w") as f:
-            json.dump(self.merges, f, ensure_ascii=False, indent=2)
+            json.dump(encoded_merges, f, ensure_ascii=True, indent=2)

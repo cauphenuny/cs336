@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <map>
+#define PYBIND11_DETAILED_ERROR_MESSAGES
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <string>
