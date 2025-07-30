@@ -156,7 +156,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         option::ShowElapsedTime{true},
         option::ShowRemainingTime{true},
         option::PrefixText{"Training BPE"},
-        // option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
         option::Stream{std::cerr},
     };
     int cur_progress = -1;
@@ -190,54 +190,52 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         Bytes new_vocab = merge_pair.first + merge_pair.second;
         vocab[vocab.size()] = new_vocab;
 
-        while (true) {
-            // 需要更新 word_counts 和 pair_counts
-            std::vector<std::pair<Word, Word>> update_word;
-            std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pair;
+        std::vector<Word> update_words;
+        std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pairs;
 
-            for (auto it = word_counts.begin(); it != word_counts.end();) {
-                const Word& word = it->first;
-                int count = it->second;
-                for (size_t index = 0; index + 1 < word.size(); ++index) {
-                    if (std::make_pair(word[index], word[index + 1]) == merge_pair) {
-                        // 构造新 word
-                        Word new_word;
-                        new_word.insert(new_word.end(), word.begin(), word.begin() + index);
-                        new_word.push_back(new_vocab);
-                        new_word.insert(new_word.end(), word.begin() + index + 2, word.end());
-                        update_word.emplace_back(word, new_word);
-                        update_pair.emplace_back(merge_pair, std::nullopt, count);
-                        if (index > 0) {
-                            update_pair.emplace_back(
-                                Pair{word[index - 1], word[index]},
-                                Pair{word[index - 1], new_vocab}, count);
-                        }
-                        if (index + 2 < word.size()) {
-                            update_pair.emplace_back(
-                                Pair{word[index + 1], word[index + 2]},
-                                Pair{new_vocab, word[index + 2]}, count);
-                        }
-                        break;
+        for (auto it = word_counts.begin(); it != word_counts.end();) {
+            const Word& word = it->first;
+            Word new_word;
+            Bytes last;
+            int count = it->second, matched = 0;
+            for (size_t index = 0; index + 1 < word.size(); ++index) {
+                if (std::make_pair(word[index], word[index + 1]) == merge_pair) {
+                    matched = 1;
+                    update_pairs.emplace_back(merge_pair, std::nullopt, count);
+                    if (index > 0) {
+                        update_pairs.emplace_back(
+                            Pair{last, word[index]}, Pair{last, new_vocab}, count);
                     }
+                    if (index + 2 < word.size()) {
+                        update_pairs.emplace_back(
+                            Pair{word[index + 1], word[index + 2]},
+                            Pair{new_vocab, word[index + 2]}, count);
+                    }
+                    new_word.push_back(new_vocab);
+                    last = new_vocab;
+                    index++;
+                } else {
+                    new_word.push_back(word[index]);
+                    last = word[index];
                 }
-                ++it;
             }
+            if (matched) update_words.push_back(word);
+            ++it;
+        }
 
-            if (update_word.empty()) break;
+        // 更新 word_counts
+        for (const auto& word : update_words) {
+            auto new_word = merge_token(word, merge_pair);
+            word_counts[new_word] += word_counts[word];
+            word_counts.erase(word);
+        }
 
-            // 更新 word_counts
-            for (const auto& [word, new_word] : update_word) {
-                word_counts[new_word] += word_counts[word];
-                word_counts.erase(word);
-            }
-
-            // 更新 pair_counts
-            for (const auto& [pair, new_pair_opt, count] : update_pair) {
-                pair_counts[pair] -= count;
-                if (pair_counts[pair] <= 0) pair_counts.erase(pair);
-                if (new_pair_opt) {
-                    pair_counts[*new_pair_opt] += count;
-                }
+        // 更新 pair_counts
+        for (const auto& [pair, new_pair_opt, count] : update_pairs) {
+            pair_counts[pair] -= count;
+            if (pair_counts[pair] <= 0) pair_counts.erase(pair);
+            if (new_pair_opt) {
+                pair_counts[*new_pair_opt] += count;
             }
         }
     }
