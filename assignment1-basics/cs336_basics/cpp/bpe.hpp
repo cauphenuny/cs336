@@ -158,16 +158,12 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
         option::Stream{std::cerr},
     };
-    int cur_progress = -1;
 
     while (vocab.size() < vocab_size) {
+        bar.set_option(option::PostfixText{std::format("{} / {}", vocab.size() + 1, vocab_size)});
+        bar.set_progress((float)(vocab.size() + 1) * 100 / vocab_size);
 
         if (pair_counts.empty()) break;
-
-        while ((int)vocab.size() * 100 / vocab_size > cur_progress) {
-            bar.tick();
-            cur_progress++;
-        }
 
         // 找出现次数最多的 pair
         auto best_pair = std::max_element(
