@@ -142,6 +142,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         auto bytes = item.second.cast<Bytes>();
         vocab[index] = bytes;
     }
+    int original_vocab_size = vocab.size();
     py::list merges;
 
     // 3. 主循环
@@ -161,7 +162,9 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
 
     while (vocab.size() < vocab_size) {
         bar.set_option(option::PostfixText{std::format("{} / {}", vocab.size() + 1, vocab_size)});
-        bar.set_progress((float)(vocab.size() + 1) * 100 / vocab_size);
+        bar.set_progress(
+            (float)(vocab.size() + 1 - original_vocab_size) * 100 /
+            (vocab_size - original_vocab_size));
 
         if (pair_counts.empty()) break;
 
