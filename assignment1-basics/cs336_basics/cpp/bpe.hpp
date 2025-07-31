@@ -156,9 +156,10 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         option::ShowElapsedTime{true},
         option::ShowRemainingTime{true},
         option::PrefixText{"Training BPE"},
-        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
         option::Stream{std::cerr},
     };
+    // 使用多线程处理
+    size_t num_threads = std::thread::hardware_concurrency();
 
     while (vocab.size() < vocab_size) {
         if (pair_counts.empty()) break;
@@ -190,27 +191,28 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
 
         std::vector<std::pair<Word, Word>> update_word;
         std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pair;
+        std::map<Pair, int> update_pair_count;
 
         // 将 word_counts 转换为 vector 以便多线程处理
         std::vector<std::pair<Word, int>> word_counts_vec(word_counts.begin(), word_counts.end());
 
         // 存储处理结果的容器
-        std::vector<std::pair<
-            std::optional<std::pair<Word, Word>>,
-            std::vector<std::tuple<Pair, std::optional<Pair>, int>>>>
-            results(word_counts_vec.size());
+        std::vector<std::vector<std::pair<
+            std::pair<Word, Word>, std::vector<std::tuple<Pair, std::optional<Pair>, int>>>>>
+            results(num_threads);
 
         // 定义处理函数
         auto process_word = [&merge_pair, &new_vocab](const std::pair<Word, int>& word_count) {
             const Word& word = word_count.first;
             Word new_word;
             Bytes last;
-            int count = word_count.second;
+            int count = word_count.second, match = 0;
             std::vector<std::tuple<Pair, std::optional<Pair>, int>> local_update_pair;
 
             for (size_t index = 0; index < word.size(); ++index) {
                 if (index + 1 < word.size() &&
                     std::make_pair(word[index], word[index + 1]) == merge_pair) {
+                    match = 1;
                     local_update_pair.emplace_back(merge_pair, std::nullopt, count);
                     if (index > 0) {
                         local_update_pair.emplace_back(
@@ -230,14 +232,9 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
                 }
             }
 
-            return std::make_pair(
-                word != new_word ? std::make_optional(std::make_pair(word, new_word))
-                                 : std::nullopt,
-                local_update_pair);
+            return std::make_tuple(match, std::make_pair(std::make_pair(std::move(word), std::move(new_word)), std::move(local_update_pair)));
         };
 
-        // 使用多线程处理
-        size_t num_threads = std::thread::hardware_concurrency();
         size_t chunk_size = (word_counts_vec.size() + num_threads - 1) / num_threads;
 
         std::vector<std::thread> threads;
@@ -246,9 +243,12 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
             size_t end = std::min((t + 1) * chunk_size, word_counts_vec.size());
             if (start >= end) continue;
 
-            threads.emplace_back([&, start, end]() {
+            threads.emplace_back([&, t, start, end]() {
                 for (size_t i = start; i < end; ++i) {
-                    results[i] = process_word(word_counts_vec[i]);
+                    auto [match, res] = process_word(word_counts_vec[i]);
+                    if (match) {
+                        results[t].push_back(res);
+                    }
                 }
             });
         }
@@ -259,11 +259,12 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
 
         // 合并结果
         for (const auto& result : results) {
-            if (result.first.has_value()) {
-                update_word.push_back(result.first.value());
-            }
-            for (const auto& pair_update : result.second) {
-                update_pair.push_back(pair_update);
+            for (const auto& [word, pairs] : result) {
+                update_word.push_back(word);
+                for (const auto& [pair, new_pair, count] : pairs) {
+                    update_pair_count[pair] -= count;
+                    if (new_pair) update_pair_count[new_pair.value()] += count;
+                }
             }
         }
 
@@ -276,12 +277,12 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         }
 
         // 更新 pair_counts
-        for (const auto& [pair, new_pair_opt, count] : update_pair) {
-            pair_counts[pair] -= count;
-            if (pair_counts[pair] <= 0) pair_counts.erase(pair);
-            if (new_pair_opt) {
-                pair_counts[*new_pair_opt] += count;
-            }
+        for (const auto& [pair, delta] : update_pair_count) {
+            auto count = pair_counts[pair], new_count = count + delta;
+            if (new_count == 0)
+                pair_counts.erase(pair);
+            else
+                pair_counts[pair] = new_count;
         }
     }
 

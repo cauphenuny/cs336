@@ -1,5 +1,6 @@
 from cs336_basics import Tokenizer, train_bpe
 from utils import TempStringFile
+import os
 import time
 import argparse
 
@@ -34,10 +35,11 @@ def test_train_bpe(
     end = time.time()
     print(f"Tokenizer trained in {end - start:.2f} seconds")
     # print(f"{tokenizer.vocab = }, {tokenizer.merges = }")
-    tokenizer.serialize(file_path.replace(".txt", f"-tokenizer-{vocab_size}.txt"))
+    base, ext = os.path.splitext(file_path)
+    tokenizer.serialize(f"{base}-tokenizer-{vocab_size}.txt")
     tokenizer.to_files(
-        file_path.replace(".txt", f"-tokenizer-{vocab_size}-vocab.json"),
-        file_path.replace(".txt", f"-tokenizer-{vocab_size}-merges.json"),
+        f"{base}-tokenizer-{vocab_size}-vocab.json",
+        f"{base}-tokenizer-{vocab_size}-merges.json",
     )
 
 
