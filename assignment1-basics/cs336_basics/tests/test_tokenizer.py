@@ -1,6 +1,9 @@
+#!/Users/ycp/Source/Courses/cs336/assignments/assignment1-basics/.venv/bin/python
 import cs336_basics
 import random
 import time
+import sys
+import argparse
 
 
 def duration(func):
@@ -24,25 +27,27 @@ def test_tokenizer_simple():
     assert test_string == decoded_string
 
 
-def test_tokenizer(test_filepath: str = "data/TinyStoriesV2-GPT4-valid.txt"):
+def test_tokenizer(test_filepath: str, tokenizer1_path: str, tokenizer2_path: str):
     specials = ["<|endoftext|>"]
     tokenizer_1 = cs336_basics.Tokenizer.from_files(
-        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.json",
-        "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.json",
+        f"{tokenizer1_path}-vocab.json",
+        f"{tokenizer1_path}-merges.json",
         specials,
     )
     tokenizer_2 = cs336_basics.Tokenizer.from_files(
-        "data/owt_valid-10000-vocab.json",
-        "data/owt_valid-10000-merges.json",
+        f"{tokenizer2_path}-vocab.json",
+        f"{tokenizer2_path}-merges.json",
         specials,
     )
     with open(test_filepath) as f:
         lines = f.readlines()
 
     sampled = random.sample(lines, 200000)
-    print(f"Sampled lines: {sampled}")
-    time_1, encoded_1 = duration(lambda: tokenizer_1.encode("".join(sampled)))
-    time_2, encoded_2 = duration(lambda: tokenizer_2.encode("".join(sampled)))
+    print(f"Sampled lines: {len(sampled)}")
+    joined_sample = "".join(sampled)
+    print(f"Sampled length: {len(joined_sample)} characters")
+    time_1, encoded_1 = duration(lambda: tokenizer_1.encode(joined_sample))
+    time_2, encoded_2 = duration(lambda: tokenizer_2.encode(joined_sample))
     original_len = len("".join(sampled).encode("utf-8"))
     print(f"TinyStories ratio: {original_len / len(encoded_1)}")
     print(f"OpenWebText ratio: {original_len / len(encoded_2)}")
@@ -53,4 +58,9 @@ def test_tokenizer(test_filepath: str = "data/TinyStoriesV2-GPT4-valid.txt"):
 if __name__ == "__main__":
     test_tokenizer_simple()
     # test_tokenizer()
-    test_tokenizer("data/owt_valid.txt")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
+    parser.add_argument("--t1", type=str, default="data/TinyStoriesV2-GPT4-train-tokenizer-10000")
+    parser.add_argument("--t2", type=str, default="data/owt_valid-tokenizer-10000")
+    args = parser.parse_args()
+    test_tokenizer(args.file, args.t1, args.t2)

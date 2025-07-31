@@ -44,7 +44,7 @@ inline auto
 encode(const py::list& words, const py::list& merges, const py::dict& vocab, int num_threads)
     -> std::vector<int> {
     std::vector<int> token_ids;
-    std::vector<std::vector<std::string>> words_vec, merged_words;
+    std::vector<std::vector<std::string>> words_vec;
     std::unordered_map<std::pair<std::string, std::string>, int, pair_hash> merges_rank;
     // int flag = 0;
     for (size_t rank = 0; const auto& item : merges) {
@@ -63,7 +63,6 @@ encode(const py::list& words, const py::list& merges, const py::dict& vocab, int
         }
         words_vec.push_back(word_tokens);
     }
-    merged_words.resize(words_vec.size());
     transform(
         words_vec,
         [merges_rank](std::vector<std::string> word) {
@@ -155,7 +154,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         option::ShowPercentage{true},
         option::ShowElapsedTime{true},
         option::ShowRemainingTime{true},
-        option::PrefixText{"Training BPE"},
+        option::PrefixText{"Training BPE "},
         option::Stream{std::cerr},
     };
     // 使用多线程处理
@@ -177,7 +176,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         if (best_pair == pair_counts.end()) break;
 
         Pair merge_pair = best_pair->first;
-        int _best_count = best_pair->second;
+        int best_count = best_pair->second;
 
         // 记录 merge
         merges.append(py::make_tuple(py::bytes(merge_pair.first), py::bytes(merge_pair.second)));
@@ -185,7 +184,9 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         vocab[vocab.size()] = new_vocab;
 
         bar.set_option(
-            option::PostfixText{std::format("{}/{} <{}>", vocab.size(), vocab_size, new_vocab)});
+            option::PostfixText{std::format(
+                "{}/{} <{}|{}> count: {}", vocab.size(), vocab_size, merge_pair.first,
+                merge_pair.second, best_count)});
         bar.set_progress(
             (float)(vocab.size() - original_vocab_size) * 100 / (vocab_size - original_vocab_size));
 
@@ -232,7 +233,10 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
                 }
             }
 
-            return std::make_tuple(match, std::make_pair(std::make_pair(std::move(word), std::move(new_word)), std::move(local_update_pair)));
+            return std::make_tuple(
+                match, std::make_pair(
+                           std::make_pair(std::move(word), std::move(new_word)),
+                           std::move(local_update_pair)));
         };
 
         size_t chunk_size = (word_counts_vec.size() + num_threads - 1) / num_threads;

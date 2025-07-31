@@ -142,6 +142,9 @@ class Tokenizer:
     def partial_decode(self, ids: list[int]) -> list[str]:
         return [self.vocab[token_id].decode("utf-8", errors="replace") for token_id in ids]
 
+    def divide(self, text: str) -> list[str]:
+        return self.partial_decode(self.encode(text))
+
     def serialize(self, output_path: str | os.PathLike) -> None:
         def serialize_token(b: bytes):
             try:
