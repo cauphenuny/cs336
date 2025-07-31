@@ -14,15 +14,21 @@ BytePair: TypeAlias = tuple[bytes, bytes]
 
 
 def train_bpe(
-    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str], num_processes: int | None = None
+    input_path: str | os.PathLike,
+    vocab_size: int,
+    special_tokens: list[str],
+    is_pretokenzied: bool = False,
+    num_processes: int | None = None,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     vocab: dict[int, bytes] = {i: s.encode("utf-8") for i, s in enumerate(special_tokens)}
     for i in range(256):
         vocab[len(vocab)] = bytes([i])
 
-    word_counts: Counter[tuple[bytes, ...]] = pretokenization.pretokenize_corpus(
-        input_path, special_tokens, num_processes
-    )
+    word_counts = Counter[tuple[bytes, ...]]()
+    if is_pretokenzied:
+        word_counts = pretokenization.load(input_path)
+    else:
+        word_counts = pretokenization.pretokenize_corpus(input_path, special_tokens, num_processes)
 
     pair_counts: Counter[BytePair] = Counter()
     for word, count in word_counts.items():
@@ -154,9 +160,15 @@ class Tokenizer:
 
     @staticmethod
     def from_train(
-        input_path: str, vocab_size: int, special_tokens: list[str], num_processes: int | None = None
+        input_path: str,
+        vocab_size: int,
+        special_tokens: list[str],
+        is_pretokenized: bool = False,
+        num_processes: int | None = None,
     ) -> "Tokenizer":
-        return Tokenizer(*train_bpe(input_path, vocab_size, special_tokens, num_processes), special_tokens)
+        return Tokenizer(
+            *train_bpe(input_path, vocab_size, special_tokens, is_pretokenized, num_processes), special_tokens
+        )
 
     @staticmethod
     def from_files(

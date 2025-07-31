@@ -15,14 +15,21 @@ test test test test test <|endoftext|>
 
 
 def test_train_bpe(
-    file_path: str = "data/TinyStoriesV2-GPT4-train.txt", vocab_size: int = 10000, num_processes: int | None = None
+    file_path: str = "data/TinyStoriesV2-GPT4-train.txt",
+    vocab_size: int = 10000,
+    num_processes: int | None = None,
+    is_pretokenized: bool = False,
 ):
     """
     Test the BPE training on a larger dataset.
     """
     start = time.time()
     tokenizer = Tokenizer.from_train(
-        input_path=file_path, vocab_size=vocab_size, special_tokens=["<|endoftext|>"], num_processes=num_processes
+        input_path=file_path,
+        vocab_size=vocab_size,
+        special_tokens=["<|endoftext|>"],
+        num_processes=num_processes,
+        is_pretokenized=is_pretokenized,
     )
     end = time.time()
     print(f"Tokenizer trained in {end - start:.2f} seconds")
@@ -37,9 +44,15 @@ def test_train_bpe(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file_path", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
+    parser.add_argument("--pretokenized", type=bool, default=False, help="Whether the input file is pretokenized")
     parser.add_argument("--vocab_size", type=int, default=10000)
     parser.add_argument("--num_processes", type=int, default=None, help="Number of processes to use for training BPE")
     args = parser.parse_args()
 
     test_train_bpe_small()
-    test_train_bpe(file_path=args.file_path, vocab_size=args.vocab_size, num_processes=args.num_processes)
+    test_train_bpe(
+        file_path=args.file_path,
+        vocab_size=args.vocab_size,
+        num_processes=args.num_processes,
+        is_pretokenized=args.pretokenized,
+    )

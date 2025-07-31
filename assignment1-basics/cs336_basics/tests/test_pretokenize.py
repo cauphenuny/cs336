@@ -1,4 +1,6 @@
-from cs336_basics import pretokenize_corpus
+import argparse
+from cs336_basics import pretokenization
+from cs336_basics.pretokenization import pretokenize_corpus
 from utils import TempStringFile
 
 
@@ -13,6 +15,18 @@ def test_file_pretokenize():
     print(word_counts.most_common(10))
 
 
+def save_pretokenized(file_path: str, num_proc: int | None = None):
+    word_counts = pretokenize_corpus(file_path, special_tokens=["<|endoftext|>"], num_processes=num_proc)
+    save_path = file_path.replace(".txt", "-pretokenized.pkl")
+    pretokenization.save(word_counts, save_path)
+    print(f"Pretokenized data saved to {save_path}")
+
+
 if __name__ == "__main__":
     test_pretokenize()
-    test_file_pretokenize()
+    # test_file_pretokenize()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file_path", type=str, default="data/owt_valid.txt")
+    parser.add_argument("--num_proc", type=int, default=0, help="Number of processes to use for pretokenization")
+    args = parser.parse_args()
+    save_pretokenized(args.file_path, args.num_proc if args.num_proc > 0 else None)

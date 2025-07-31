@@ -1,4 +1,5 @@
 import os
+import pickle
 import multiprocessing
 import regex as re
 from tqdm import tqdm
@@ -69,7 +70,7 @@ def count_word(text_with_id: tuple[int, str], pattern: str, special_tokens: list
     splited_text = re.split("|".join(re.escape(s) for s in special_tokens), text)
     counter: dict[bytes, int] = {}
     pretokenizer = re.compile(pattern)
-    for segment in tqdm(splited_text, position=proc_id, desc=f"Chunk #{proc_id}"):
+    for segment in tqdm(splited_text, desc=f"Chunk #{proc_id}"):
         for word in pretokenizer.finditer(segment):
             decoded = word.group(0).encode("utf-8")
             counter[decoded] = counter.get(decoded, 0) + 1
@@ -107,6 +108,17 @@ def pretokenize_corpus(
 
     print(f"Pretokenized, {len(word_counts)} unique words, {sum(word_counts.values())} total words")
     return word_counts
+
+
+def load(file_path: str | os.PathLike) -> Counter[tuple[bytes, ...]]:
+    with open(file_path, "rb") as f:
+        counts = pickle.load(f)
+    return counts
+
+
+def save(word_counts: Counter[tuple[bytes, ...]], file_path: str | os.PathLike) -> None:
+    with open(file_path, "wb") as f:
+        pickle.dump(word_counts, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def pretokenize(text: str, special_tokens: list[str]) -> list[tuple[bytes, ...]]:

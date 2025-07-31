@@ -161,11 +161,6 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
     };
 
     while (vocab.size() < vocab_size) {
-        bar.set_option(option::PostfixText{std::format("{} / {}", vocab.size() + 1, vocab_size)});
-        bar.set_progress(
-            (float)(vocab.size() + 1 - original_vocab_size) * 100 /
-            (vocab_size - original_vocab_size));
-
         if (pair_counts.empty()) break;
 
         // 找出现次数最多的 pair
@@ -187,6 +182,11 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         merges.append(py::make_tuple(py::bytes(merge_pair.first), py::bytes(merge_pair.second)));
         Bytes new_vocab = merge_pair.first + merge_pair.second;
         vocab[vocab.size()] = new_vocab;
+
+        bar.set_option(
+            option::PostfixText{std::format("{}/{} <{}>", vocab.size(), vocab_size, new_vocab)});
+        bar.set_progress(
+            (float)(vocab.size() - original_vocab_size) * 100 / (vocab_size - original_vocab_size));
 
         std::vector<std::pair<Word, Word>> update_word;
         std::vector<std::tuple<Pair, std::optional<Pair>, int>> update_pair;
