@@ -7,7 +7,7 @@ from jaxtyping import Float, Int
 
 import numpy.typing as npt
 import torch
-from torch import Tensor
+from torch import Tensor, index_fill
 import cs336_basics
 
 
@@ -30,7 +30,9 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    raise NotImplementedError
+    linear = cs336_basics.layers.Linear(d_in, d_out)
+    linear.load_state_dict({"weight": weights})
+    return linear(in_features)
 
 
 def run_embedding(
@@ -52,7 +54,9 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    embedding = cs336_basics.layers.Embedding(vocab_size, d_model)
+    embedding.load_state_dict({"weights": weights})
+    return embedding(token_ids)
 
 
 def run_swiglu(
@@ -379,7 +383,9 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    rms_norm = cs336_basics.layers.RMSNorm(d_model, eps)
+    rms_norm.load_state_dict({"weights": weights})
+    return rms_norm(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -393,7 +399,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    return cs336_basics.functional.silu(in_features)
 
 
 def run_get_batch(

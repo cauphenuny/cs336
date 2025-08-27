@@ -1,6 +1,5 @@
 import argparse
-from cs336_basics import pretokenization
-from cs336_basics.pretokenization import pretokenize_corpus
+from cs336_basics import pretokenization, pretokenize_corpus
 from utils import TempStringFile
 
 
