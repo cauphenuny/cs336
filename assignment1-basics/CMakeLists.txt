@@ -7,6 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 启用 compile_commands.json 生成
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# 使用FetchContent获取fmt库
+include(FetchContent)
+
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG        11.2.0  # 或者使用最新的stable tag
+)
+
+FetchContent_MakeAvailable(fmt)
+
 # Python 目录选项
 option(PYTHON_DIR "Custom Python directory" "")
 if(PYTHON_DIR)
@@ -58,6 +69,8 @@ pybind11_add_module(cpp_extensions cs336_basics/cpp/export.cpp)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(cpp_extensions PRIVATE OpenMP::OpenMP_CXX)
 endif()
+
+target_link_libraries(cpp_extensions PRIVATE fmt::fmt)
 
 # 设置输出目录到 Python 包中
 set_target_properties(cpp_extensions PROPERTIES

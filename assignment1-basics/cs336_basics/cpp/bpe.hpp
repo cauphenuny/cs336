@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <fmt/format.h>
 
 namespace py = pybind11;
 
@@ -184,7 +185,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         vocab[vocab.size()] = new_vocab;
 
         bar.set_option(
-            option::PostfixText{std::format(
+            option::PostfixText{fmt::format(
                 "{}/{} <{}|{}> count: {}", vocab.size(), vocab_size, merge_pair.first,
                 merge_pair.second, best_count)});
         bar.set_progress(
