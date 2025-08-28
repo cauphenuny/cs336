@@ -1,4 +1,4 @@
-from cs336_basics import Tokenizer, train_bpe
+from cs336_basics.tokenize.tokenizer import Tokenizer, train_bpe
 from utils import TempStringFile
 import os
 import time

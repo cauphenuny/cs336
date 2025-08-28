@@ -1,23 +1,23 @@
 import argparse
-from cs336_basics import pretokenization, pretokenize_corpus
+from cs336_basics.tokenize import pretokenizer
 from utils import TempStringFile
 
 
 def test_pretokenize():
     with TempStringFile("The quick brown fox jumps over the lazy dog. <|endoftext|>") as f:
-        counts = pretokenize_corpus(f.name, ["<|endoftext|>"])
+        counts = pretokenizer.pretokenize_corpus(f.name, ["<|endoftext|>"])
         print(counts.most_common())
 
 
 def test_file_pretokenize():
-    word_counts = pretokenize_corpus("data/TinyStoriesV2-GPT4-train.txt", ["<|endoftext|>"])
+    word_counts = pretokenizer.pretokenize_corpus("data/TinyStoriesV2-GPT4-train.txt", ["<|endoftext|>"])
     print(word_counts.most_common(10))
 
 
 def save_pretokenized(file_path: str, num_proc: int | None = None):
-    word_counts = pretokenize_corpus(file_path, special_tokens=["<|endoftext|>"], num_processes=num_proc)
+    word_counts = pretokenizer.pretokenize_corpus(file_path, special_tokens=["<|endoftext|>"], num_processes=num_proc)
     save_path = file_path.replace(".txt", "-pretokenized.pkl")
-    pretokenization.save(word_counts, save_path)
+    pretokenizer.save(word_counts, save_path)
     print(f"Pretokenized data saved to {save_path}")
 
 

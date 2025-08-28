@@ -1,5 +1,6 @@
 #!/Users/ycp/Source/Courses/cs336/assignments/assignment1-basics/.venv/bin/python
 import cs336_basics
+from cs336_basics.tokenize.tokenizer import Tokenizer
 import random
 import time
 import sys
@@ -15,7 +16,7 @@ def duration(func):
 
 def test_tokenizer_simple():
     specials = ["<|endoftext|>"]
-    tokenizer_10k = cs336_basics.Tokenizer.from_files(
+    tokenizer_10k = Tokenizer.from_files(
         "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.json",
         "data/TinyStoriesV2-GPT4-train-tokenizer-10000-merges.json",
         specials,
@@ -29,12 +30,12 @@ def test_tokenizer_simple():
 
 def test_tokenizer(test_filepath: str, tokenizer1_path: str, tokenizer2_path: str):
     specials = ["<|endoftext|>"]
-    tokenizer_1 = cs336_basics.Tokenizer.from_files(
+    tokenizer_1 = Tokenizer.from_files(
         f"{tokenizer1_path}-vocab.json",
         f"{tokenizer1_path}-merges.json",
         specials,
     )
-    tokenizer_2 = cs336_basics.Tokenizer.from_files(
+    tokenizer_2 = Tokenizer.from_files(
         f"{tokenizer2_path}-vocab.json",
         f"{tokenizer2_path}-merges.json",
         specials,

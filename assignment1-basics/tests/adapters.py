@@ -30,7 +30,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    linear = cs336_basics.layers.Linear(d_in, d_out)
+    linear = cs336_basics.network.layers.Linear(d_in, d_out)
     linear.load_state_dict({"weight": weights})
     return linear(in_features)
 
@@ -54,7 +54,7 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    embedding = cs336_basics.layers.Embedding(vocab_size, d_model)
+    embedding = cs336_basics.network.layers.Embedding(vocab_size, d_model)
     embedding.load_state_dict({"weights": weights})
     return embedding(token_ids)
 
@@ -305,7 +305,7 @@ def run_transformer_lm(
         num_heads (int): Number of heads to use in multi-headed attention. `d_model` must be
             evenly divisible by `num_heads`.
         d_ff (int): Dimensionality of the feed-forward inner layer (section 3.3).
-        rope_theta (float): The RoPE $\Theta$ parameter.
+        rope_theta (float): The RoPE $\\Theta$ parameter.
         weights (dict[str, Tensor]):
             State dict of our reference implementation. {num_layers} refers to an
             integer between `0` and `num_layers - 1` (the layer index).
@@ -383,7 +383,7 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    rms_norm = cs336_basics.layers.RMSNorm(d_model, eps)
+    rms_norm = cs336_basics.network.layers.RMSNorm(d_model, eps)
     rms_norm.load_state_dict({"weights": weights})
     return rms_norm(in_features)
 
@@ -399,7 +399,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    return cs336_basics.functional.silu(in_features)
+    return cs336_basics.network.functional.silu(in_features)
 
 
 def run_get_batch(
@@ -566,7 +566,7 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    return cs336_basics.Tokenizer(vocab, merges, special_tokens)
+    return cs336_basics.tokenize.tokenizer.Tokenizer(vocab, merges, special_tokens)
 
 
 def run_train_bpe(
@@ -596,4 +596,4 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    return cs336_basics.train_bpe(input_path, vocab_size, special_tokens, **kwargs)
+    return cs336_basics.tokenize.tokenizer.train_bpe(input_path, vocab_size, special_tokens, **kwargs)

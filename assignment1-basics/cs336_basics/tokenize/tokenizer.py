@@ -7,7 +7,7 @@ from cs336_basics import cpp_extensions
 import os
 import base64
 import json
-from . import pretokenization
+from . import pretokenizer
 
 
 BytePair: TypeAlias = tuple[bytes, bytes]
@@ -26,9 +26,9 @@ def train_bpe(
 
     word_counts = Counter[tuple[bytes, ...]]()
     if is_pretokenzied:
-        word_counts = pretokenization.load(input_path)
+        word_counts = pretokenizer.load(input_path)
     else:
-        word_counts = pretokenization.pretokenize_corpus(input_path, special_tokens, num_processes)
+        word_counts = pretokenizer.pretokenize_corpus(input_path, special_tokens, num_processes)
 
     pair_counts: Counter[BytePair] = Counter()
     for word, count in word_counts.items():
@@ -117,7 +117,7 @@ class Tokenizer:
         return tuple(new_tokens)
 
     def encode(self, text: str):
-        words = pretokenization.pretokenize(text, self.special_tokens)
+        words = pretokenizer.pretokenize(text, self.special_tokens)
         # tokens: list[bytes] = []
 
         # for word in words:

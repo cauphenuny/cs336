@@ -7,7 +7,7 @@ def accl_type():
         return os.environ["ACCL"]
 
     try:
-        import torch_npu
+        import torch_npu # pyright: ignore
 
         if torch_npu.npu.is_available():  # pyright: ignore
             return "npu"
@@ -36,7 +36,7 @@ def get_accl_module():
     if ACCL_TYPE == "mps":
         return torch.mps
     if ACCL_TYPE == "npu":
-        import torch_npu
+        import torch_npu # pyright: ignore
 
         return torch_npu.npu  # pyright: ignore
 
