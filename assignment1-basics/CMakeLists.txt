@@ -7,17 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 启用 compile_commands.json 生成
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 使用FetchContent获取fmt库
-include(FetchContent)
-
-FetchContent_Declare(
-    fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG        11.2.0  # 或者使用最新的stable tag
-)
-
-FetchContent_MakeAvailable(fmt)
-
 # Python 目录选项
 option(PYTHON_DIR "Custom Python directory" "")
 if(PYTHON_DIR)
@@ -58,6 +47,23 @@ if(OpenMP_CXX_FOUND)
 else()
     message(WARNING "OpenMP not found, parallel processing will be disabled")
 endif()
+
+# 添加 fmt 库
+include(FetchContent)
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 11.0.2
+)
+
+# 设置 fmt 选项
+set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(fmt)
+
+# 确保 fmt 库使用 -fPIC 编译
+set_target_properties(fmt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
