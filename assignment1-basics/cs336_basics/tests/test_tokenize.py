@@ -1,6 +1,7 @@
 import argparse
 import os
 import numpy as np
+from loguru import logger
 from cs336_basics.tokenize.tokenizer import Tokenizer
 
 def tokenize(tokenizer_path, file):
@@ -10,9 +11,10 @@ def tokenize(tokenizer_path, file):
         f"{tokenizer_path}-merges.json",
         specials
     )
+    logger.info("reading")
     with open(file, "r") as f:
         text = f.read()
-        tokens = tokenizer.encode(text)
+        tokens = tokenizer.encode(text, verbose=True)
         first = tokenizer.partial_decode(tokens[:20])
         print(f"First 20 tokens: {tokens[:20]}, decoded: {first}")
         file_base, ext = os.path.splitext(file)
