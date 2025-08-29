@@ -119,7 +119,7 @@ class Tokenizer:
 
     def encode(self, text: str, verbose: bool = False):
         if verbose:
-            logger.info("pretokenizing")
+            logger.info(f"pretokenizing, specials = {self.special_tokens}")
         words = pretokenizer.pretokenize(text, self.special_tokens)
         if verbose:
             logger.info(f"pretokenized, {len(words)} words")

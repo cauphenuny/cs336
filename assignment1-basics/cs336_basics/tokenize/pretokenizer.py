@@ -122,12 +122,22 @@ def save(word_counts: Counter[tuple[bytes, ...]], file_path: str | os.PathLike) 
         pickle.dump(word_counts, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
+def lazy_split(pattern, text):
+    last = 0
+    for m in re.finditer(pattern, text):
+        if m.start() > last:
+            yield text[last:m.start()]
+        yield m.group(0)
+        last = m.end()
+    if last < len(text):
+        yield text[last:]
+
 def pretokenize(text: str, special_tokens: list[str]) -> list[tuple[bytes, ...]]:
     if special_tokens:
         special_tokens = sorted(special_tokens, key=len, reverse=True)
         pattern = "(" + "|".join(re.escape(s) for s in special_tokens) + ")"
         # print(f"Using special tokens: {special_tokens}, pattern: {pattern}")
-        chunked_text = re.split(pattern, text)
+        chunked_text = lazy_split(pattern, text)
     else:
         chunked_text = [text]
     pretokenizer = re.compile(WORD_PATTERN)
