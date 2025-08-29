@@ -132,7 +132,7 @@ def lazy_split(pattern, text):
     if last < len(text):
         yield text[last:]
 
-def pretokenize(text: str, special_tokens: list[str]) -> list[tuple[bytes, ...]]:
+def pretokenize(text: str, special_tokens: list[str], verbose: bool = False) -> list[tuple[bytes, ...]]:
     if special_tokens:
         special_tokens = sorted(special_tokens, key=len, reverse=True)
         pattern = "(" + "|".join(re.escape(s) for s in special_tokens) + ")"
@@ -142,10 +142,16 @@ def pretokenize(text: str, special_tokens: list[str]) -> list[tuple[bytes, ...]]
         chunked_text = [text]
     pretokenizer = re.compile(WORD_PATTERN)
     words: list[tuple[bytes, ...]] = []
+    if verbose:
+        pbar = tqdm(total=len(text), desc="Pretokenizing")
     for chunk in chunked_text:
+        if verbose:
+            pbar.update(len(chunk))
         if chunk in special_tokens:
             words.append((chunk.encode("utf-8"),))
         else:
             for match in pretokenizer.findall(chunk):
                 words.append(tuple(bytes([b]) for b in match.encode("utf-8")))
+    if verbose:
+        pbar.close()
     return words

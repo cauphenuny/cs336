@@ -117,12 +117,14 @@ class Tokenizer:
                 i += 1
         return tuple(new_tokens)
 
-    def encode(self, text: str, verbose: bool = False):
+    def encode(self, text: str | bytes, verbose: bool = False):
         if verbose:
-            logger.info(f"pretokenizing, specials = {self.special_tokens}")
-        words = pretokenizer.pretokenize(text, self.special_tokens)
+            logger.info(f"Pretokenizing, specials = {self.special_tokens}")
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", errors="replace")
+        words = pretokenizer.pretokenize(text, self.special_tokens, verbose=verbose)
         if verbose:
-            logger.info(f"pretokenized, {len(words)} words")
+            logger.info(f"Pretokenized, {len(words)} words")
         # tokens: list[bytes] = []
 
         # for word in words:
@@ -134,7 +136,7 @@ class Tokenizer:
         # return [self.vocab.inv[tok] for tok in tokens]
         num_threads = os.cpu_count() or 1
         if verbose:
-            logger.info(f"tokenizing, {num_threads = }")
+            logger.info(f"Tokenizing, {num_threads = }")
         return cpp_extensions.encode_bpe(words, self.merges, self.inverse_vocab, num_threads)
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
