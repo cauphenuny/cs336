@@ -13,7 +13,7 @@ def tokenize(tokenizer_path, file):
         specials
     )
     logger.info("reading")
-    num_processes = min(os.cpu_count() or 1, 64)
+    num_processes = min(os.cpu_count() or 1, 16)
     tokens: list[list[int]] = []
     with open(file, "rb") as f:
         logger.info(f"finding chunk boundaries, chunks = {num_processes}")

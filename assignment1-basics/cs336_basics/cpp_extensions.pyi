@@ -7,7 +7,11 @@ def hello() -> None:
     ...
 
 def encode_bpe(
-    input: list[tuple[bytes, ...]], merges: list[tuple[bytes, bytes]], vocab: dict[bytes, int], num_threads: int
+    input: list[tuple[bytes, ...]],
+    merges: list[tuple[bytes, bytes]],
+    vocab: dict[bytes, int],
+    num_threads: int,
+    verbose: bool = False,
 ) -> list[int]:
     """
     Encodes a list of byte tuples using BPE merges and a vocabulary.

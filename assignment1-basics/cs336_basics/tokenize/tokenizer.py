@@ -137,7 +137,7 @@ class Tokenizer:
         num_threads = os.cpu_count() or 1
         if verbose:
             logger.info(f"Tokenizing, {num_threads = }")
-        return cpp_extensions.encode_bpe(words, self.merges, self.inverse_vocab, num_threads)
+        return cpp_extensions.encode_bpe(words, self.merges, self.inverse_vocab, num_threads, verbose=verbose)
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
         for text in iterable:

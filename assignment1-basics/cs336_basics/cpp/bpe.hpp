@@ -42,7 +42,7 @@ inline auto merge_token(
 }
 
 inline auto
-encode(const py::list& words, const py::list& merges, const py::dict& vocab, int num_threads)
+encode(const py::list& words, const py::list& merges, const py::dict& vocab, int num_threads, bool verbose = false)
     -> std::vector<int> {
     std::vector<int> token_ids;
     std::vector<std::vector<std::string>> words_vec;
@@ -90,7 +90,7 @@ encode(const py::list& words, const py::list& merges, const py::dict& vocab, int
             // std::println("word: {}", word);
             return word;
         },
-        num_threads);
+        num_threads, verbose, "BPE encoding");
     // 1);
     // std::println("words_vec: {}", words_vec);
     for (const auto& word : words_vec) {
