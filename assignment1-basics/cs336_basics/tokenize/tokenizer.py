@@ -3,7 +3,7 @@ from collections import Counter
 from collections.abc import Iterable
 from tqdm import tqdm
 from bidict import bidict
-from cs336_basics import cpp_extensions
+from .. import cpp_extensions
 import os
 import base64
 import json

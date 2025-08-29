@@ -56,6 +56,23 @@ def test_tokenizer(test_filepath: str, tokenizer1_path: str, tokenizer2_path: st
     print(f"OpenWebText time: {time_2:.2f}s, {original_len / time_2:.2f} bytes/s")
 
 
+def test_interactive(tokenizer_path):
+    specials = ["<|endoftext|>"]
+    tokenizer = Tokenizer.from_files(
+        f"{tokenizer_path}-vocab.json",
+        f"{tokenizer_path}-merges.json",
+        specials,
+    )
+    while True:
+        try:
+            user_input = input(">>> ")
+            if user_input.lower() == "exit":
+                break
+            print(tokenizer.divide(user_input))
+        except EOFError:
+            break
+
+
 if __name__ == "__main__":
     test_tokenizer_simple()
     # test_tokenizer()
@@ -63,5 +80,9 @@ if __name__ == "__main__":
     parser.add_argument("--file", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
     parser.add_argument("--t1", type=str, default="data/TinyStoriesV2-GPT4-train-tokenizer-10000")
     parser.add_argument("--t2", type=str, default="data/owt_valid-tokenizer-10000")
+    parser.add_argument("--it", type=str)
     args = parser.parse_args()
-    test_tokenizer(args.file, args.t1, args.t2)
+    if args.it:
+        test_interactive(args.it)
+    else:
+        test_tokenizer(args.file, args.t1, args.t2)
