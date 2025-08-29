@@ -1,6 +1,7 @@
 from typing import TypeAlias
 from collections import Counter
 from collections.abc import Iterable
+from loguru import logger
 from tqdm import tqdm
 from bidict import bidict
 from .. import cpp_extensions
@@ -116,8 +117,12 @@ class Tokenizer:
                 i += 1
         return tuple(new_tokens)
 
-    def encode(self, text: str):
+    def encode(self, text: str, echo: bool = False):
+        if echo:
+            logger.info("pretokenizing")
         words = pretokenizer.pretokenize(text, self.special_tokens)
+        if echo:
+            logger.info(f"pretokenized, {len(words)} words")
         # tokens: list[bytes] = []
 
         # for word in words:
@@ -128,6 +133,8 @@ class Tokenizer:
 
         # return [self.vocab.inv[tok] for tok in tokens]
         num_threads = os.cpu_count() or 1
+        if echo:
+            logger.info(f"tokenizing, {num_threads = }")
         return cpp_extensions.encode_bpe(words, self.merges, self.inverse_vocab, num_threads)
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:

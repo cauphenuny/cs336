@@ -1,6 +1,6 @@
 import torch
 from torch import nn, Tensor
-from jaxtyping import Float, Bool
+from jaxtyping import Float, Bool, Int
 import einops
 
 
@@ -41,3 +41,27 @@ def scaled_dot_product_attention(
     return einops.einsum(
         attn_value, value, " ... len_q len_k, ... len_k dim_v -> ... len_q dim_v"
     )
+
+
+def cross_entropy(
+    logits: Float[Tensor, " ... batch classes"], targets: Int[Tensor, " ... batch"]
+) -> Float[Tensor, " ..."]:
+    max_logits = torch.max(logits, dim=-1, keepdim=True).values
+    log_probs = logits - max_logits
+    log_probs = -(
+        log_probs - torch.log(torch.sum(torch.exp(log_probs), dim=-1, keepdim=True))
+    )
+    entropy: Float[Tensor, " ... batch"] = log_probs.gather(
+        dim=-1, index=targets.unsqueeze(-1)
+    ).squeeze(-1)
+    return entropy.mean(dim=-1)
+
+
+def perplexity(
+    logits: Float[Tensor, " ... batch seq_len vocab_size"],
+    targets: Int[Tensor, " ... batch seq_len"],
+):
+    logits = einops.rearrange(logits, "... batch len vocab-> ... len batch vocab")
+    targets = einops.rearrange(targets, "... batch len -> ... len batch")
+    ce: Float[Tensor, " ... len"] = cross_entropy(logits, targets)
+    return ce.mean(dim=-1)

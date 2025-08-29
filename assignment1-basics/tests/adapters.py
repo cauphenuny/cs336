@@ -88,9 +88,9 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    print(
-        f"{in_features.shape = }, {w1_weight.shape = }, {w2_weight.shape = }, {w3_weight.shape = }"
-    )
+    # print(
+    #     f"{in_features.shape = }, {w1_weight.shape = }, {w2_weight.shape = }, {w3_weight.shape = }"
+    # )
     ffn = cs336_basics.network.layers.FeedForward(d_model, d_ff)
     ffn.load_state_dict(
         {"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight}
@@ -496,7 +496,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cs336_basics.network.layers.functional.cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:

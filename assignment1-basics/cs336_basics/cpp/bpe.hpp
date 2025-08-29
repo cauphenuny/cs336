@@ -66,7 +66,7 @@ encode(const py::list& words, const py::list& merges, const py::dict& vocab, int
     }
     transform(
         words_vec,
-        [merges_rank](std::vector<std::string> word) {
+        [&merges_rank](std::vector<std::string> word) {
             std::vector<std::pair<std::pair<std::string, std::string>, int>> valid_pairs;
             do {
                 valid_pairs.clear();

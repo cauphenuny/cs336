@@ -1,3 +1,4 @@
+from typing import override
 from sympy import Mul
 import torch
 import einops
@@ -6,7 +7,20 @@ from torch import Tensor
 from . import functional
 
 
-class Linear(torch.nn.Module):
+class Module(torch.nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def param_size(self):
+        return sum(p.numel() for p in self.parameters())
+
+
+class ModuleList(torch.nn.ModuleList, Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+class Linear(Module):
     def __init__(
         self,
         in_features: int,
@@ -31,7 +45,7 @@ class Linear(torch.nn.Module):
         return x @ self.weight.T
 
 
-class Embedding(torch.nn.Module):
+class Embedding(Module):
     def __init__(
         self,
         vocab_size: int,
@@ -67,7 +81,7 @@ class Embedding(torch.nn.Module):
         return self.weight[token_ids]
 
 
-class RMSNorm(torch.nn.Module):
+class RMSNorm(Module):
     """
     RMSNorm Module
     """
@@ -109,7 +123,7 @@ class RMSNorm(torch.nn.Module):
         return result.to(in_dtype)
 
 
-class FeedForward(torch.nn.Module):
+class FeedForward(Module):
     """
     SwiGLU Position-Wise Feed-Forward Layer
     """
@@ -137,7 +151,7 @@ class FeedForward(torch.nn.Module):
         return functional.swiglu(x, self.w1.weight, self.w2.weight, self.w3.weight)
 
 
-class RoPE(torch.nn.Module):
+class RoPE(Module):
     rotate_x: Float[Tensor, "max_seq_len d_k"]
     rotate_y: Float[Tensor, "max_seq_len d_k"]
     freqs: Float[Tensor, "half_d_k"]
@@ -157,7 +171,7 @@ class RoPE(torch.nn.Module):
         """
         super().__init__()
         self.device = device
-        freqs = torch.pow(theta, -torch.arange(0, d_k, 2) / d_k)
+        freqs = torch.pow(theta, -torch.arange(0, d_k, 2, dtype=torch.float32) / d_k)
         self.register_buffer("freqs", freqs, persistent=False)
         self.max_seq_len = max_seq_len
         if max_seq_len:
@@ -208,7 +222,7 @@ class RoPE(torch.nn.Module):
         return (rot_x * x) + (rot_y * y)
 
 
-class MultiheadSelfAttention(torch.nn.Module):
+class MultiheadSelfAttention(Module):
     def __init__(
         self,
         d_model: int,
@@ -216,17 +230,19 @@ class MultiheadSelfAttention(torch.nn.Module):
         casual: bool = True,
         rope_theta: float | None = None,
         rope_len: int | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = d_model // num_heads
         self.casual = casual
-        self.q_proj = Linear(d_model, d_model)
-        self.k_proj = Linear(d_model, d_model)
-        self.v_proj = Linear(d_model, d_model)
-        self.output_proj = Linear(d_model, d_model)
+        self.q_proj = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.k_proj = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.v_proj = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.output_proj = Linear(d_model, d_model, device=device, dtype=dtype)
         self.rope = (
-            RoPE(rope_theta, self.head_dim, rope_len)
+            RoPE(rope_theta, self.head_dim, rope_len, device=device)
             if rope_theta and rope_len
             else None
         )

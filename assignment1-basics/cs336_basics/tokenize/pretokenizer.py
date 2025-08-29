@@ -6,6 +6,7 @@ from tqdm import tqdm
 from typing import BinaryIO
 from collections import Counter
 from functools import partial
+from loguru import logger
 
 
 def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
@@ -106,7 +107,7 @@ def pretokenize_corpus(
                 for k, v in chunked_word_count.items():
                     word_counts[tuple(bytes([b]) for b in k)] += v
 
-    print(f"Pretokenized, {len(word_counts)} unique words, {sum(word_counts.values())} total words")
+    logger.info(f"Pretokenized, {len(word_counts)} unique words, {sum(word_counts.values())} total words")
     return word_counts
 
 
