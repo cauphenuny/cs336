@@ -15,7 +15,7 @@ test test test test test <|endoftext|>
         print(f"{vocab = }, {merges = }")
 
 
-def test_train_bpe(
+def run_train_bpe(
     file_path: str = "data/TinyStoriesV2-GPT4-train.txt",
     vocab_size: int = 10000,
     num_processes: int | None = None,
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     test_train_bpe_small()
-    test_train_bpe(
+    run_train_bpe(
         file_path=args.file_path,
         vocab_size=args.vocab_size,
         num_processes=args.num_processes,

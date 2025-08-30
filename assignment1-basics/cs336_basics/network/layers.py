@@ -10,9 +10,21 @@ from . import functional
 class Module(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._device = "unknown"
 
     def param_size(self):
         return sum(p.numel() for p in self.parameters())
+
+    @property
+    def device(self):
+        param = next(self.parameters(), None)
+        if param is not None:
+            self._device = param.device
+        return self._device
+
+    @device.setter
+    def device(self, value: torch.device | str | None):
+        self._device = value
 
 
 class ModuleList(torch.nn.ModuleList, Module):
@@ -25,21 +37,19 @@ class Linear(Module):
         self,
         in_features: int,
         out_features: int,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.device = device
+        # self.device = device
         self.dtype = dtype
         self.weight: Float[Tensor, "d_out d_in"] = torch.nn.Parameter(
             torch.empty(out_features, in_features, device=device, dtype=dtype)
         )
         std = (2 / (in_features + out_features)) ** 0.5
-        torch.nn.init.trunc_normal_(
-            self.weight, mean=0.0, std=std, a=-3 * std, b=3 * std
-        )
+        torch.nn.init.trunc_normal_(self.weight, mean=0.0, std=std, a=-3 * std, b=3 * std)
 
     def forward(self, x: Tensor) -> Tensor:
         return x @ self.weight.T
@@ -50,7 +60,7 @@ class Embedding(Module):
         self,
         vocab_size: int,
         d_model: int,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         """
@@ -59,7 +69,7 @@ class Embedding(Module):
         Args:
             vocab_size (int): Number of unique tokens in the vocabulary.
             d_model (int): Dimension of the embedding vectors (d_model).
-            device (torch.device | None): Device to place the embeddings on (default: None).
+            device (torch.device | str | None): Device to place the embeddings on (default: None).
             dtype (torch.dtype | None): Data type of the embeddings (default: None).
         """
         super().__init__()
@@ -90,7 +100,7 @@ class RMSNorm(Module):
         self,
         d_model: int,
         eps: float = 1e-5,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         """
@@ -99,15 +109,13 @@ class RMSNorm(Module):
         Args:
             d_model (int): Dimension of the model (number of features).
             eps (float): Small value to avoid division by zero.
-            device (torch.device | None): Device to place the parameters on (default: None).
+            device (torch.device | str | None): Device to place the parameters on (default: None).
             dtype (torch.dtype | None): Data type of the parameters (default: None).
         """
         super().__init__()
-        self.weight: Float[Tensor, " d_model"] = torch.nn.Parameter(
-            torch.ones(d_model, device=device, dtype=dtype)
-        )
+        self.weight: Float[Tensor, " d_model"] = torch.nn.Parameter(torch.ones(d_model, device=device, dtype=dtype))
         self.eps = eps
-        self.device = device
+        # self.device = device
 
     def forward(self, x: Float[Tensor, " ... d_model"]) -> Tensor:
         """
@@ -132,7 +140,7 @@ class FeedForward(Module):
         self,
         d_model: int,
         d_ff: int | None = None,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
@@ -152,16 +160,16 @@ class FeedForward(Module):
 
 
 class RoPE(Module):
-    rotate_x: Float[Tensor, "max_seq_len d_k"]
-    rotate_y: Float[Tensor, "max_seq_len d_k"]
-    freqs: Float[Tensor, "half_d_k"]
+    rotate_x: Float[Tensor, " max_seq_len d_k"]
+    rotate_y: Float[Tensor, " max_seq_len d_k"]
+    freqs: Float[Tensor, " half_d_k"]
 
     def __init__(
         self,
         theta: float,
         d_k: int,
         max_seq_len: int = 0,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
     ):
         """
         Args:
@@ -182,9 +190,7 @@ class RoPE(Module):
 
     def _update_rotation(self, max_seq_len: int):
         positions = torch.arange(max_seq_len, dtype=torch.float32)
-        angles = einops.einsum(
-            positions, self.freqs, "max_seq_len, half_d_k -> max_seq_len half_d_k"
-        )
+        angles = einops.einsum(positions, self.freqs, "max_seq_len, half_d_k -> max_seq_len half_d_k")
         """
         [   cos     -sin    ] @ [x] = [cos x - sin y]
         [   sin     cos     ]   [y]   [sin x + cos y]
@@ -213,12 +219,8 @@ class RoPE(Module):
             self._update_rotation(int(torch.max(token_positions)))
         rot_x: Float[Tensor, " ... seq_len d_k"] = self.rotate_x[token_positions]
         rot_y: Float[Tensor, " ... seq_len d_k"] = self.rotate_y[token_positions]
-        x: Float[Tensor, " ... seq_len d_k"] = input[..., 0::2].repeat_interleave(
-            2, dim=-1
-        )
-        y: Float[Tensor, " ... seq_len d_k"] = input[..., 1::2].repeat_interleave(
-            2, dim=-1
-        )
+        x: Float[Tensor, " ... seq_len d_k"] = input[..., 0::2].repeat_interleave(2, dim=-1)
+        y: Float[Tensor, " ... seq_len d_k"] = input[..., 1::2].repeat_interleave(2, dim=-1)
         return (rot_x * x) + (rot_y * y)
 
 
@@ -230,7 +232,7 @@ class MultiheadSelfAttention(Module):
         casual: bool = True,
         rope_theta: float | None = None,
         rope_len: int | None = None,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
@@ -241,11 +243,7 @@ class MultiheadSelfAttention(Module):
         self.k_proj = Linear(d_model, d_model, device=device, dtype=dtype)
         self.v_proj = Linear(d_model, d_model, device=device, dtype=dtype)
         self.output_proj = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.rope = (
-            RoPE(rope_theta, self.head_dim, rope_len, device=device)
-            if rope_theta and rope_len
-            else None
-        )
+        self.rope = RoPE(rope_theta, self.head_dim, rope_len, device=device) if rope_theta and rope_len else None
 
     def forward(
         self,
@@ -271,6 +269,7 @@ class MultiheadSelfAttention(Module):
             seq_len = x.shape[-2]
             mask = torch.arange(seq_len).reshape(-1, 1) >= torch.arange(seq_len)
             # print(mask)
+            mask = mask.to(self.device)
         else:
             mask = None
         attn_output = functional.scaled_dot_product_attention(q, k, v, mask=mask)
@@ -280,4 +279,3 @@ class MultiheadSelfAttention(Module):
             num_heads=self.num_heads,
         )
         return self.output_proj(attn_output)
-

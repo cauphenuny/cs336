@@ -3,6 +3,7 @@ from .layers import Module, ModuleList
 from .layers import RMSNorm, MultiheadSelfAttention, FeedForward, Embedding, Linear
 from . import functional
 from jaxtyping import Float, Int
+from loguru import logger
 
 
 class TransformerBlock(Module):
@@ -13,13 +14,18 @@ class TransformerBlock(Module):
         d_ff: int | None = None,
         rope_theta: float | None = None,
         rope_len: int | None = None,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
         self.attn = MultiheadSelfAttention(
-            d_model, num_heads, rope_theta=rope_theta, rope_len=rope_len, device=device, dtype=dtype
+            d_model,
+            num_heads,
+            rope_theta=rope_theta,
+            rope_len=rope_len,
+            device=device,
+            dtype=dtype,
         )
         self.ln2 = RMSNorm(d_model, device=device, dtype=dtype)
         self.ffn = FeedForward(d_model, d_ff, device=device, dtype=dtype)
@@ -40,7 +46,7 @@ class TransformerLM(Module):
         num_layers: int,
         d_ff: int | None = None,
         rope_theta: float | None = None,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
@@ -61,15 +67,33 @@ class TransformerLM(Module):
         )
         self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
         self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
+        logger.info(f"Model initialized with {self.param_size() / 1024 / 1024:,.2f} M parameters.")
 
-    def forward(
-        self, x: Int[torch.Tensor, " ... seq_len"], softmax: bool = False
-    ) -> Float[torch.Tensor, " ... seq_len vocab_size"]:
+    def forward(self, x: Int[torch.Tensor, " ... seq_len"]) -> Float[torch.Tensor, " ... seq_len vocab_size"]:
+        assert x.dtype in (torch.int16, torch.int32, torch.int64, torch.uint8, torch.bool, torch.long)
+        x = x.to(torch.long)
         x = self.token_embeddings(x)
         for layer in self.layers:
             x = layer(x)
         x = self.ln_final(x)
         x = self.lm_head(x)
-        if softmax:
-            x = functional.softmax(x, dim=-1)
         return x
+
+    def generate(
+        self,
+        input: Int[torch.Tensor, " seq_len"],
+        end: int = 0,
+        max_length: int = 2048,
+        temperature: float = 1e-5,
+        top_p=0.9,
+    ) -> Int[torch.Tensor, " gen_len"]:
+        self.eval()
+        with torch.no_grad():
+            for _ in range(max_length):
+                logits = self(input)
+                probs = functional.softmax(logits[:, -1, :] / temperature, dim=-1)
+                next_token = functional.nucleus_sampling(probs, top_p)
+                input = torch.cat([input, next_token])
+                if next_token.item() == end:
+                    break
+        return input

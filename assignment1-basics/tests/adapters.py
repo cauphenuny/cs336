@@ -567,7 +567,7 @@ def run_save_checkpoint(
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
     return cs336_basics.train.checkpoint.save_checkpoint(
-        model, optimizer, iteration, out
+        model=model, optimizer=optimizer, iter=iteration, out=out
     )
 
 
@@ -589,7 +589,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    return cs336_basics.train.checkpoint.load_checkpoint(src, model, optimizer)
+    return cs336_basics.train.checkpoint.load_checkpoint(src, model, optimizer)["iter"]
 
 
 def get_tokenizer(

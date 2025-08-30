@@ -41,12 +41,12 @@ else()
 endif()
 
 # 查找并启用 OpenMP
-find_package(OpenMP)
-if(OpenMP_CXX_FOUND)
-    message(STATUS "OpenMP found and enabled")
-else()
-    message(WARNING "OpenMP not found, parallel processing will be disabled")
-endif()
+# find_package(OpenMP)
+# if(OpenMP_CXX_FOUND)
+#     message(STATUS "OpenMP found and enabled")
+# else()
+#     message(WARNING "OpenMP not found, parallel processing will be disabled")
+# endif()
 
 # 添加 fmt 库
 include(FetchContent)
@@ -72,9 +72,9 @@ find_package(pybind11 REQUIRED)
 pybind11_add_module(cpp_extensions cs336_basics/cpp/export.cpp)
 
 # 如果找到 OpenMP，链接到目标
-if(OpenMP_CXX_FOUND)
-    target_link_libraries(cpp_extensions PRIVATE OpenMP::OpenMP_CXX)
-endif()
+# if(OpenMP_CXX_FOUND)
+#     target_link_libraries(cpp_extensions PRIVATE OpenMP::OpenMP_CXX)
+# endif()
 
 target_link_libraries(cpp_extensions PRIVATE fmt::fmt)
 

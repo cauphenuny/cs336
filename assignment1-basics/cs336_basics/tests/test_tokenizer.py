@@ -14,7 +14,7 @@ def duration(func):
     return (end - start, ret)
 
 
-def test_tokenizer_simple():
+def run_tokenizer_simple():
     specials = ["<|endoftext|>"]
     tokenizer_10k = Tokenizer.from_files(
         "data/TinyStoriesV2-GPT4-train-tokenizer-10000-vocab.json",
@@ -28,7 +28,7 @@ def test_tokenizer_simple():
     assert test_string == decoded_string
 
 
-def test_tokenizer(test_filepath: str, tokenizer1_path: str, tokenizer2_path: str):
+def run_test_tokenizer(test_filepath: str, tokenizer1_path: str, tokenizer2_path: str):
     specials = ["<|endoftext|>"]
     tokenizer_1 = Tokenizer.from_files(
         f"{tokenizer1_path}-vocab.json",
@@ -56,7 +56,7 @@ def test_tokenizer(test_filepath: str, tokenizer1_path: str, tokenizer2_path: st
     print(f"OpenWebText time: {time_2:.2f}s, {original_len / time_2:.2f} bytes/s")
 
 
-def test_interactive(tokenizer_path):
+def devide(tokenizer_path):
     specials = ["<|endoftext|>"]
     tokenizer = Tokenizer.from_files(
         f"{tokenizer_path}-vocab.json",
@@ -73,16 +73,31 @@ def test_interactive(tokenizer_path):
             break
 
 
+def interactive(tokenizer_path):
+    specials = ["<|endoftext|>"]
+    tokenizer = Tokenizer.from_files(
+        f"{tokenizer_path}-vocab.json",
+        f"{tokenizer_path}-merges.json",
+        specials,
+    )
+    while True:
+        user_input = input(">>> tokenizer.")
+        print(eval(f"tokenizer.{user_input}"))
+
+
 if __name__ == "__main__":
-    test_tokenizer_simple()
+    run_tokenizer_simple()
     # test_tokenizer()
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
     parser.add_argument("--t1", type=str, default="data/TinyStoriesV2-GPT4-train-tokenizer-10000")
     parser.add_argument("--t2", type=str, default="data/owt_valid-tokenizer-10000")
+    parser.add_argument("--div", type=str)
     parser.add_argument("--it", type=str)
     args = parser.parse_args()
-    if args.it:
-        test_interactive(args.it)
+    if args.div:
+        devide(args.div)
+    elif args.it:
+        interactive(args.it)
     else:
-        test_tokenizer(args.file, args.t1, args.t2)
+        run_test_tokenizer(args.file, args.t1, args.t2)

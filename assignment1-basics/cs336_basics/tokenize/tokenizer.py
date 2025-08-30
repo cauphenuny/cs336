@@ -116,6 +116,11 @@ class Tokenizer:
                 new_tokens.append(original[i])
                 i += 1
         return tuple(new_tokens)
+    
+    def token_id(self, text: str | bytes):
+        if isinstance(text, str):
+            text = text.encode("utf-8")
+        return self.inverse_vocab[text]
 
     def encode(self, text: str | bytes, num_threads: int | None = None, verbose: bool = False):
         if verbose:
