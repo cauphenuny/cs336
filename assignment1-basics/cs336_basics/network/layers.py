@@ -1,4 +1,3 @@
-from typing import override
 from sympy import Mul
 import torch
 import einops

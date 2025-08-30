@@ -1,4 +1,5 @@
 import torch
+import tqdm
 from .layers import Module, ModuleList
 from .layers import RMSNorm, MultiheadSelfAttention, FeedForward, Embedding, Linear
 from . import functional
@@ -89,11 +90,16 @@ class TransformerLM(Module):
     ) -> Int[torch.Tensor, " gen_len"]:
         self.eval()
         with torch.no_grad():
-            for _ in range(max_length):
-                logits = self(input)
-                probs = functional.softmax(logits[:, -1, :] / temperature, dim=-1)
-                next_token = functional.nucleus_sampling(probs, top_p)
-                input = torch.cat([input, next_token])
-                if next_token.item() == end:
-                    break
+            pbar = tqdm.tqdm(range(max_length), desc="Generating")
+            try:
+                for _ in pbar:
+                    logits = self(input)
+                    probs = functional.softmax(logits[-1, :] / temperature, dim=-1)
+                    next_token = functional.nucleus_sampling(probs, top_p)
+                    input = torch.cat([input, next_token])
+                    if next_token.item() == end:
+                        break
+            except KeyboardInterrupt:
+                logger.info("Generation interrupted by user.")
+            # pbar.
         return input

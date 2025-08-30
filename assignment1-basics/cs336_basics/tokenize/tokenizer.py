@@ -116,7 +116,7 @@ class Tokenizer:
                 new_tokens.append(original[i])
                 i += 1
         return tuple(new_tokens)
-    
+
     def token_id(self, text: str | bytes):
         if isinstance(text, str):
             text = text.encode("utf-8")
@@ -175,8 +175,9 @@ class Tokenizer:
             for merge in self.merges:
                 f.write(f"{serialize_token(merge[0])} {serialize_token(merge[1])}\n")
 
-    @staticmethod
+    @classmethod
     def from_train(
+        cls,
         input_path: str,
         vocab_size: int,
         special_tokens: list[str],
@@ -187,9 +188,12 @@ class Tokenizer:
             *train_bpe(input_path, vocab_size, special_tokens, is_pretokenized, num_processes), special_tokens
         )
 
-    @staticmethod
+    @classmethod
     def from_files(
-        vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike, special_tokens: list[str] | None = None
+        cls,
+        vocab_filepath: str | os.PathLike,
+        merges_filepath: str | os.PathLike,
+        special_tokens: list[str] | None = None,
     ) -> "Tokenizer":
         with open(vocab_filepath) as f:
             encoded_vocab = json.load(f)
@@ -200,6 +204,14 @@ class Tokenizer:
                 (base64.b64decode(m[0].encode("ascii")), base64.b64decode(m[1].encode("ascii"))) for m in encoded_merges
             ]
         return Tokenizer(vocab, merges, special_tokens)  # type: ignore[return-value]
+
+    @classmethod
+    def from_name(cls, name: str, vocab_size: int, special_tokens: list[str] | None = None):
+        return cls.from_files(
+            f"{name}-{vocab_size}-vocab.json",
+            f"{name}-{vocab_size}-merges.json",
+            special_tokens=special_tokens,
+        )
 
     def to_files(self, vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike) -> None:
         encoded_vocab = {k: base64.b64encode(v).decode("ascii") for k, v in self.vocab.items()}

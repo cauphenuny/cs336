@@ -3,12 +3,13 @@ name = "cs336_basics"
 version = "1.0.3"
 description = "CS336 Assignment 1"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "einops>=0.8.1", # tensor operations
     "einx>=0.3.0", # more general tensor operations
     "jaxtyping>=0.3.0", # type hints for pytorch/jax/numpy
-    "numpy",
+    "numpy<2.0.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
+    "numpy; sys_platform == 'darwin' or platform_machine == 'x86_64'",
     "psutil>=6.1.1",
     "pytest>=8.3.4",
     "regex>=2024.11.6", # more powerful regex than the builtin `re` module
@@ -16,14 +17,18 @@ dependencies = [
     "tiktoken>=0.9.0",
     "torch~=2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'", # Intel Macs
     "torch~=2.6.0; sys_platform == 'darwin' and platform_machine == 'arm64'", # Apple Silicon Macs
-    "torch~=2.6.0; sys_platform != 'darwin'", # Non-macOS platforms
+    "torch~=2.6.0; sys_platform != 'darwin' and platform_machine == 'x86_64'", # Non-macOS platforms
+    "torch~=2.4.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
+    "torch_npu~=2.4.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
     "tqdm>=4.67.1",
     "wandb>=0.19.7",
     "bidict>=0.23.1",
     "scalene>=1.5.51",
     "loguru>=0.7.3",
+    "decorator>=5.2.1",
+    "scipy>=1.15.3",
+    "attrs>=25.3.0",
 ]
-
 
 [build-system]
 requires = ["scikit-build-core", "pybind11"]

@@ -23,6 +23,7 @@ parser.add_argument("--output", type=str, default="outputs")
 parser.add_argument("--project", type=str, default="CS336 - Assignment 1")
 parser.add_argument("--name", type=str, default="experiment")
 parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--log_interval", type=int, default=10)
 parser.add_argument("--val_interval", type=int, default=200)
 
 parser.add_argument("--vocab_size", type=int, default=10000)
@@ -52,7 +53,7 @@ def main():
     )
 
     device = ACCL_DEVICE
-    model = TransformerLM(
+    model_args = dict(
         vocab_size=args.vocab_size,
         context_length=args.context_length,
         d_model=args.d_model,
@@ -62,6 +63,7 @@ def main():
         num_layers=args.num_layers,
         device=device,
     )
+    model = TransformerLM(**model_args)
     optimizer = AdamW(
         model.parameters(),
         lr=args.lr,
@@ -82,7 +84,7 @@ def main():
         path=os.path.join(args.dataset, f"valid-{args.vocab_size}.npy"),
         context_length=args.context_length,
         batch_size=args.batch_size,
-        limit=10,
+        limit=20,
         limit_type="train_steps",
         vocab_size=args.vocab_size,
         # device=device,
@@ -116,11 +118,15 @@ def main():
                 {"val_loss": vloss, "val_perplexity": vperp},
                 step=step,
             )
-        save_checkpoint(checkpoint_path, model=model, optimizer=optimizer, iter=step, run_id=run.id)
+        save_checkpoint(
+            checkpoint_path, model=model, optimizer=optimizer, iter=step, model_args=model_args, run_id=run.id
+        )
         if vloss < best_loss:
             best_loss = vloss
             best_perplexity = vperp
-            save_checkpoint(best_checkpoint_path, model=model, optimizer=optimizer, iter=step, run_id=run.id)
+            save_checkpoint(
+                best_checkpoint_path, model=model, optimizer=optimizer, iter=step, model_args=model_args, run_id=run.id
+            )
         model.train()
         return vloss, vperp
 
@@ -134,10 +140,11 @@ def main():
         loss = functional.cross_entropy(output_logits, target).mean()
         loss.backward()
         optimizer.step()
-        wandb.log(
-            {"train_loss": loss.item()},
-            step=step,
-        )
+        if step % args.log_interval == 0:
+            wandb.log(
+                {"train_loss": loss.item()},
+                step=step,
+            )
         pbar.set_postfix(loss=f"{loss.item():.3f}")
         if (step + 1) % args.val_interval == 0:
             validate()
