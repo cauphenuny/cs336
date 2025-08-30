@@ -151,7 +151,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
         // option::BarWidth{80},
         option::Start{"["},
         option::End{"]"},
-        option::ForegroundColor{Color::white},
+        option::ForegroundColor{Color::unspecified},
         option::ShowPercentage{true},
         option::ShowElapsedTime{true},
         option::ShowRemainingTime{true},

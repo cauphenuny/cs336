@@ -117,7 +117,7 @@ class Tokenizer:
                 i += 1
         return tuple(new_tokens)
 
-    def encode(self, text: str | bytes, verbose: bool = False):
+    def encode(self, text: str | bytes, num_threads: int | None = None, verbose: bool = False):
         if verbose:
             logger.info(f"Pretokenizing, specials = {self.special_tokens}")
         if isinstance(text, bytes):
@@ -134,7 +134,7 @@ class Tokenizer:
         #         tokens.append(token)
 
         # return [self.vocab.inv[tok] for tok in tokens]
-        num_threads = os.cpu_count() or 1
+        num_threads = min(num_threads or os.cpu_count() or 1, 32)
         if verbose:
             logger.info(f"Tokenizing, {num_threads = }")
         return cpp_extensions.encode_bpe(words, self.merges, self.inverse_vocab, num_threads, verbose=verbose)
