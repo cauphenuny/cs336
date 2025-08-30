@@ -391,10 +391,10 @@ def run_transformer_lm(
         next-word distribution for each token.
     """
     model = cs336_basics.network.models.TransformerLM(
-        vocab_size=vocab_size, 
-        context_length=context_length, 
-        d_model=d_model, 
-        d_ff = d_ff,
+        vocab_size=vocab_size,
+        context_length=context_length,
+        d_model=d_model,
+        d_ff=d_ff,
         num_layers=num_layers,
         num_heads=num_heads,
         rope_theta=rope_theta,
@@ -462,7 +462,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return cs336_basics.train.dataset.get_batch(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -499,7 +499,9 @@ def run_cross_entropy(
     return cs336_basics.network.layers.functional.cross_entropy(inputs, targets)
 
 
-def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
+def run_gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter], max_l2_norm: float
+) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
 
     Args:
@@ -508,14 +510,14 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return cs336_basics.optimize.functional.gradient_clip(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> type[torch.optim.Optimizer]:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return cs336_basics.optimize.optimizers.AdamW
 
 
 def run_get_lr_cosine_schedule(
@@ -543,7 +545,9 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return cs336_basics.optimize.functional.lr_cosine_schedule(
+        it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters
+    )
 
 
 def run_save_checkpoint(
@@ -562,7 +566,9 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    return cs336_basics.train.checkpoint.save_checkpoint(
+        model, optimizer, iteration, out
+    )
 
 
 def run_load_checkpoint(
@@ -583,7 +589,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return cs336_basics.train.checkpoint.load_checkpoint(src, model, optimizer)
 
 
 def get_tokenizer(
@@ -636,4 +642,6 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    return cs336_basics.tokenize.tokenizer.train_bpe(input_path, vocab_size, special_tokens, **kwargs)
+    return cs336_basics.tokenize.tokenizer.train_bpe(
+        input_path, vocab_size, special_tokens, **kwargs
+    )
