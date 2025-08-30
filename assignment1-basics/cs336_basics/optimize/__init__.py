@@ -1,1 +1,2 @@
-from .optimizers import SGD
+from .optimizers import SGD, AdamW
+from . import functional
