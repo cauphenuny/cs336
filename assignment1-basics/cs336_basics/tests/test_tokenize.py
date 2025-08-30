@@ -31,11 +31,13 @@ def tokenize(tokenizer_path, file, num_chunks=0, num_threads=0, dtype=np.int16):
             token = tokenizer.encode(chunk, verbose=True, num_threads=num_threads)
             logger.info(f"first 5 tokens: {tokenizer.partial_decode(token[:5])}")
             # tokens.append(token)
-            logger.info("writing")
-            np.save(f"{file_base}_chunk{i}.npy", np.array(token, dtype=dtype))
+            array = np.array(token, dtype=dtype)
+            logger.info(f"writing chunk #{i}, size = {array.nbytes / 1024 / 1024:_.2f} MB")
+            np.save(f"{file_base}_chunk{i}.npy", array)
     logger.info("concatenating")
     arrays = [np.load(f"{file_base}_chunk{i}.npy") for i in range(len(boundaries) - 1)]
     final = np.concatenate(arrays)
+    logger.info(f"writing final, size = {final.nbytes / 1024 / 1024:_.2f} MB")
     np.save(f"{file_base}.npy", final)
 
 def main():

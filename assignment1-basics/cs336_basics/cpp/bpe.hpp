@@ -148,7 +148,7 @@ train(py::dict vocab_py, py::dict word_counts_py, py::dict pair_counts_py, int v
     // 3. 主循环
     using namespace indicators;
     BlockProgressBar bar{
-        // option::BarWidth{80},
+        option::BarWidth{80},
         option::Start{"["},
         option::End{"]"},
         option::ForegroundColor{Color::unspecified},
