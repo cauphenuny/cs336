@@ -226,7 +226,7 @@ def main():
                     best_perplexity=best_perplexity,
                     loss=vloss,
                     perplexity=vperp,
-                    train_tokens=step * args.batch_size * args.context_length,
+                    train_tokens=(step + 1) * args.batch_size * args.context_length,
                 )
                 outputs.append(best_model_path)
             save_checkpoint(
@@ -240,7 +240,7 @@ def main():
                 best_perplexity=best_perplexity,
                 loss=vloss,
                 perplexity=vperp,
-                train_tokens=step * args.batch_size * args.context_length,
+                train_tokens=(step + 1) * args.batch_size * args.context_length,
             )
             print("\r\033[K", file=sys.stderr, end="")  # clear line
             logger.info(
