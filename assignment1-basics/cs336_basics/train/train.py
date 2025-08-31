@@ -21,7 +21,7 @@ from .checkpoint import save_checkpoint, load_checkpoint, save_model
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("dataset", type=str)
+parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output", type=str, default="outputs")
 parser.add_argument("--project", type=str, default="CS336 - Assignment 1")
 parser.add_argument("--name", type=str, default="experiment")
@@ -30,7 +30,7 @@ parser.add_argument("--log_interval", type=int, default=10)
 parser.add_argument("--val_interval", type=int, default=500)
 
 parser.add_argument(
-    "--model_preset", type=str, choices=["nano", "micro", "small", "medium", "large", "huge", "ultimate"]
+    "--model_preset", type=str, choices=["nano", "micro", "tiny", "small", "medium", "large", "huge", "ultimate"]
 )
 parser.add_argument("--vocab_size", type=int, default=10000)
 parser.add_argument("--context_length", type=int, default=256)
@@ -39,6 +39,18 @@ parser.add_argument("--d_ff", type=int, default=1344)
 parser.add_argument("--rope_theta", type=float, default=10000.0)
 parser.add_argument("--num_heads", type=int, default=16)
 parser.add_argument("--num_layers", type=int, default=4)
+
+
+def convert_to_bool(value: str) -> bool:
+    if value.lower() in ("yes", "true", "t", "1"):
+        return True
+    elif value.lower() in ("no", "false", "f", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
+parser.add_argument("--share_embeddings", type=convert_to_bool, default=False)
 parser.add_argument("--max_train_tokens", type=int, default=327_680_000)
 
 parser.add_argument("--batch_size", type=int, default=64)
@@ -50,30 +62,38 @@ parser.add_argument("--eps", type=float, default=1e-8)
 parser.add_argument("--weight_decay", type=float, default=0.01)
 
 
-def load_preset(preset: Literal["nano", "micro", "small", "medium", "large", "huge", "ultimate"]):
+def load_preset(preset: Literal["nano", "micro", "tiny", "small", "medium", "large", "huge", "ultimate"]):
     presets = {
         "nano": dict(
-            d_model=128, d_ff=320, num_heads=4, num_layers=2, batch_size=128, lr=5e-4, max_train_tokens=20_480_000
+            d_model=64, d_ff=256, num_heads=2, num_layers=2, batch_size=128, lr=1e-3, max_train_tokens=40_960_000
         ),
         "micro": dict(
-            d_model=256, d_ff=640, num_heads=8, num_layers=4, batch_size=128, lr=5e-4, max_train_tokens=81_920_000
+            d_model=128, d_ff=320, num_heads=4, num_layers=4, batch_size=128, lr=1e-3, max_train_tokens=40_960_000
+        ),
+        "tiny": dict(
+            d_model=256, d_ff=640, num_heads=8, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=81_920_000
         ),
         "small": dict(
-            d_model=512, d_ff=1344, num_heads=16, num_layers=4, batch_size=64, lr=3e-4, max_train_tokens=327_680_000
+            d_model=512, d_ff=1344, num_heads=16, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=327_680_000
         ),
         "medium": dict(
-            d_model=512, d_ff=1344, num_heads=16, num_layers=8, batch_size=32, lr=3e-4, max_train_tokens=327_680_000
+            d_model=512, d_ff=1344, num_heads=16, num_layers=8, batch_size=32, lr=8e-4, max_train_tokens=655_360_000
         ),
         "large": dict(
-            d_model=768, d_ff=2048, num_heads=16, num_layers=12, batch_size=32, lr=3e-4, max_train_tokens=655_360_000
+            d_model=768, d_ff=2048, num_heads=16, num_layers=8, batch_size=32, lr=8e-4, max_train_tokens=655_360_000
         ),
         "huge": dict(
-            d_model=1024, d_ff=2888, num_heads=16, num_layers=16, batch_size=16, lr=2e-4, max_train_tokens=1_310_720_000
+            d_model=1024, d_ff=2888, num_heads=16, num_layers=16, batch_size=16, lr=5e-4, max_train_tokens=1_310_720_000
         ),
         "ultimate": dict(
-            d_model=1536, d_ff=4096, num_heads=16, num_layers=24, batch_size=8, lr=1e-4, max_train_tokens=2_621_440_000
+            d_model=1536, d_ff=4096, num_heads=16, num_layers=24, batch_size=8, lr=5e-4, max_train_tokens=2_621_440_000
         ),
     }
+    for p in ("nano", "micro", "tiny", "small"):
+        presets[p]["share_embeddings"] = True
+    for p in ("medium", "large", "huge", "ultimate"):
+        presets[p]["share_embeddings"] = False
+
     if preset not in presets:
         raise ValueError(f"Unknown preset: {preset}")
     args = presets[preset]
@@ -88,6 +108,7 @@ def main():
     if args.model_preset is not None:
         load_preset(args.model_preset)
         args = parser.parse_args()
+    logger.info(f"Arguments: {vars(args)}")
     wandb.login(key=os.environ["WANDB_API_KEY"])
     device = ACCL_DEVICE
     model_args = dict(
@@ -98,6 +119,7 @@ def main():
         rope_theta=args.rope_theta,
         num_heads=args.num_heads,
         num_layers=args.num_layers,
+        share_embeddings=args.share_embeddings,
         device=device,
     )
     model = TransformerLM(**model_args)
@@ -229,15 +251,10 @@ def main():
                 optimizer.step()
                 if step % args.log_interval == 0:
                     wandb.log(
-                        {"train_loss": loss.item(), "grad": grad},
+                        {"train_loss": loss.item(), "grad": grad, "lr": current_lr},
                         step=step,
                     )
-                lr_str = (
-                    "[" + ", ".join([f"{lr:.3e}" for lr in current_lr]) + "]"
-                    if isinstance(current_lr, list)
-                    else f"{current_lr:.3e}"
-                )
-                pbar.set_postfix(lr=lr_str, grad=f"{grad:.3e}", loss=f"{loss.item():.3f}")
+                pbar.set_postfix(lr=f"{current_lr:.3e}", grad=f"{grad:.3e}", loss=f"{loss.item():.3f}")
                 if (step + 1) % args.val_interval == 0:
                     validate()
     except KeyboardInterrupt:

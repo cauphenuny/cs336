@@ -47,6 +47,7 @@ class TransformerLM(Module):
         num_layers: int,
         d_ff: int | None = None,
         rope_theta: float | None = None,
+        share_embeddings: bool = False,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
@@ -67,8 +68,23 @@ class TransformerLM(Module):
             ]
         )
         self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
-        self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
-        logger.info(f"Model initialized with {self.param_size() / 1024 / 1024:,.2f} M parameters.")
+        self.lm_head = Linear(
+            d_model,
+            vocab_size,
+            device=device,
+            dtype=dtype,
+            weight=self.token_embeddings.weight if share_embeddings else None,
+        )
+
+        transformer_param = self.layers.param_size + self.ln_final.param_size
+        embedding_param = self.param_size - transformer_param
+        # logger.info(f"{self.lm_head.param_size = }")
+        # logger.info(f"{self.token_embeddings.param_size = }")
+        # logger.info(f"{embedding_param = }")
+        logger.info(
+            f"Model initialized with {self.param_size / 1024 / 1024:,.2f}M parameters"
+            f"({embedding_param / 1024 / 1024:,.2f}M embedding, {transformer_param / 1024 / 1024:,.2f}M transformer)."
+        )
 
     def forward(self, x: Int[torch.Tensor, " ... seq_len"]) -> Float[torch.Tensor, " ... seq_len vocab_size"]:
         assert x.dtype in (torch.int16, torch.int32, torch.int64, torch.uint8, torch.bool, torch.long)

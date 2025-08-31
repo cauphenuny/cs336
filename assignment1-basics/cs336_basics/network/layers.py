@@ -11,6 +11,7 @@ class Module(torch.nn.Module):
         super().__init__(*args, **kwargs)
         self._device = "unknown"
 
+    @property
     def param_size(self):
         return sum(p.numel() for p in self.parameters())
 
@@ -36,6 +37,7 @@ class Linear(Module):
         self,
         in_features: int,
         out_features: int,
+        weight: Float[Tensor, " d_out d_in"] | None = None,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
@@ -44,11 +46,14 @@ class Linear(Module):
         self.out_features = out_features
         # self.device = device
         self.dtype = dtype
-        self.weight: Float[Tensor, "d_out d_in"] = torch.nn.Parameter(
-            torch.empty(out_features, in_features, device=device, dtype=dtype)
-        )
-        std = (2 / (in_features + out_features)) ** 0.5
-        torch.nn.init.trunc_normal_(self.weight, mean=0.0, std=std, a=-3 * std, b=3 * std)
+        if weight is not None:
+            self.weight = weight
+        else:
+            self.weight: Float[Tensor, "d_out d_in"] = torch.nn.Parameter(
+                torch.empty(out_features, in_features, device=device, dtype=dtype)
+            )
+            std = (2 / (in_features + out_features)) ** 0.5
+            torch.nn.init.trunc_normal_(self.weight, mean=0.0, std=std, a=-3 * std, b=3 * std)
 
     def forward(self, x: Tensor) -> Tensor:
         return x @ self.weight.T
