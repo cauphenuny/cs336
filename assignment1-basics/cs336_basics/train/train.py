@@ -14,12 +14,14 @@ from ..network.models import TransformerLM
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
-from ..network.multiplatform import ACCL_DEVICE
+from ..network.multiplatform import ACCL_DEVICE, profile
 from ..network import functional
 from .dataset import TextDataLoader, TextDataset
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
 
 parser = argparse.ArgumentParser()
+
+parser.add_argument("--profile", action="store_true", default=False)
 
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output", type=str, default="outputs")
@@ -109,8 +111,10 @@ def main():
         load_preset(args.model_preset)
         args = parser.parse_args()
     logger.info(f"Arguments: {vars(args)}")
-    wandb.login(key=os.environ["WANDB_API_KEY"])
     device = ACCL_DEVICE
+    logger.info(f"Train on: {device}")
+
+    wandb.login(key=os.environ["WANDB_API_KEY"])
     model_args = dict(
         vocab_size=args.vocab_size,
         context_length=args.context_length,
@@ -184,6 +188,7 @@ def main():
     os.makedirs(train_path, exist_ok=True)
     checkpoint_path = os.path.join(train_path, "checkpoint.pt")
     best_model_path = os.path.join(train_path, "best_model.pt")
+    trace_path = os.path.join(train_path, "trace")
 
     def validate():
         nonlocal best_loss, best_perplexity
@@ -218,6 +223,8 @@ def main():
                     run_id=run.id,
                     best_loss=best_loss,
                     best_perplexity=best_perplexity,
+                    loss=vloss,
+                    perplexity=vperp,
                 )
                 outputs.append(best_model_path)
             save_checkpoint(
@@ -229,6 +236,8 @@ def main():
                 run_id=run.id,
                 best_loss=best_loss,
                 best_perplexity=best_perplexity,
+                loss=vloss,
+                perplexity=vperp,
             )
             print("\r\033[K", file=sys.stderr, end="")  # clear line
             logger.info(
@@ -237,31 +246,38 @@ def main():
         model.train()
         return vloss, vperp
 
-    try:
-        with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step") as pbar:
-            for step, (input, target) in enumerate(pbar, start=start_iter):
-                current_lr = lr_scheduler.update(step)
-                optimizer.zero_grad()
-                # logger.debug(f"Train Step {step}: {input.shape = }, {target.shape = }, {input.dtype = }")
-                input, target = input.to(device), target.to(device)
-                output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
-                loss = functional.cross_entropy(output_logits, target).mean()
-                loss.backward()
-                optimize.functional.gradient_clip(model.parameters(), 2.0)
-                grad = optimize.functional.gradient_norm(model.parameters())
-                optimizer.step()
-                if step % args.log_interval == 0:
-                    wandb.log(
-                        {"train_loss": loss.item(), "grad": grad, "lr": current_lr},
-                        step=step,
-                    )
-                pbar.set_postfix(lr=f"{current_lr:.3e}", grad=f"{grad:.3e}", loss=f"{loss.item():.3f}")
-                if (step + 1) % args.val_interval == 0:
-                    validate()
-    except KeyboardInterrupt:
-        logger.warning("Training interrupted by user.")
-    else:
-        validate()
+    with profile(enable=args.profile, json_trace_file=trace_path if args.profile else None) as prof:
+        try:
+            with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step") as pbar:
+                train_loss = float("nan")
+                grad = float("nan")
+                for step, (input, target) in enumerate(pbar, start=start_iter):
+                    current_lr = lr_scheduler.update(step)
+                    optimizer.zero_grad()
+                    # logger.debug(f"Train Step {step}: {input.shape = }, {target.shape = }, {input.dtype = }")
+                    input, target = input.to(device), target.to(device)
+                    output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
+                    loss = functional.cross_entropy(output_logits, target).mean()
+                    loss.backward()
+                    optimize.functional.gradient_clip(model.parameters(), 2.0)
+                    if step % args.log_interval == 0:
+                        grad = optimize.functional.gradient_norm(model.parameters()).cpu()
+                        train_loss = loss.cpu()
+                        wandb.log(
+                            {"train_loss": train_loss, "grad": grad, "lr": current_lr},
+                            step=step,
+                        )
+                        pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
+                    optimizer.step()
+                    pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
+                    if (step + 1) % args.val_interval == 0:
+                        validate()
+                    if prof:
+                        prof.step()
+        except KeyboardInterrupt:
+            logger.warning("Training interrupted by user.")
+        else:
+            validate()
 
 
 if __name__ == "__main__":

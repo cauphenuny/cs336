@@ -23,7 +23,7 @@ def lr_cosine_schedule(
 def gradient_norm(params: Iterable[torch.nn.Parameter]):
     grads = [p.grad for p in params if p.grad is not None]
     total_norm = torch.stack([g.norm() for g in grads]).norm()
-    return total_norm.item()
+    return total_norm
 
 
 def gradient_clip(params: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: float = 1e-6):

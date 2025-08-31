@@ -1,5 +1,7 @@
+from loguru import logger
 import torch
 import os
+from contextlib import contextmanager
 
 
 def accl_type():
@@ -7,7 +9,7 @@ def accl_type():
         return os.environ["ACCL"]
 
     try:
-        import torch_npu # pyright: ignore
+        import torch_npu  # pyright: ignore
 
         if torch_npu.npu.is_available():  # pyright: ignore
             return "npu"
@@ -36,7 +38,7 @@ def get_accl_module():
     if ACCL_TYPE == "mps":
         return torch.mps
     if ACCL_TYPE == "npu":
-        import torch_npu # pyright: ignore
+        import torch_npu  # pyright: ignore
 
         return torch_npu.npu  # pyright: ignore
 
@@ -44,3 +46,68 @@ def get_accl_module():
 
 
 accl_module = get_accl_module()
+
+
+def accl_activity():
+    if ACCL_TYPE == "cuda":
+        return torch.profiler.ProfilerActivity.CUDA
+    elif ACCL_TYPE == "npu":
+        import torch_npu  # pyright: ignore
+
+        return torch_npu.profiler.ProfilerActivity.NPU
+    return torch.profiler.ProfilerActivity.CPU
+
+
+ACCL_ACTIVITY = accl_activity()
+
+
+@contextmanager
+def profile(
+    enable: bool = False,
+    record_shapes: bool = True,
+    with_stack: bool = False,
+    profile_memory: bool = True,
+    sort_bys: list[str] = ["cpu_time", "cpu_memory_usage"],
+    row_limit: int = 30,
+    json_trace_file: str | None = None,
+):
+    """
+    A wrapper for torch.profiler.profile that:
+      - Supports enable/disable (to avoid overhead when not profiling)
+      - Detects backend (CUDA / MPS / CPU)
+      - Falls back gracefully if GPU profiling is not supported (e.g., MPS)
+
+    Args:
+        enabled (bool): Whether to enable profiling
+        record_shapes (bool): Whether to record tensor shapes
+        with_stack (bool): Whether to record Python stack traces
+        profile_memory (bool): Whether to track memory usage
+        sort_by (str): Column to sort profiling results
+        row_limit (int): Max rows in profiling table
+        json_trace_file (str): Path to write JSON trace (if not None)
+    """
+    if not enable:
+        # No-op context manager
+        yield None
+        return
+
+    # Detect activities
+    activities = [torch.profiler.ProfilerActivity.CPU]
+
+    if ACCL_ACTIVITY != torch.profiler.ProfilerActivity.CPU:
+        activities.append(ACCL_ACTIVITY)
+
+    logger.info("Profiling with activities: {}", activities)
+
+    with torch.profiler.profile(
+        activities=activities,
+        schedule=torch.profiler.schedule(wait=1, warmup=3, active=10, repeat=3),
+        record_shapes=record_shapes,
+        with_stack=with_stack,
+        profile_memory=profile_memory,
+        on_trace_ready=(torch.profiler.tensorboard_trace_handler(json_trace_file) if json_trace_file else None),
+    ) as prof:
+        yield prof
+        for sort_by in sort_bys:
+            logger.info("Profiling results sorted by {}", sort_by)
+            print(prof.key_averages().table(sort_by=sort_by, row_limit=row_limit))
