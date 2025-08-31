@@ -61,6 +61,12 @@ def accl_activity():
 ACCL_ACTIVITY = accl_activity()
 
 
+def compile_backend():
+    if ACCL_TYPE == "mps":
+        return "aot_eager"
+    return None
+
+
 @contextmanager
 def profile(
     enable: bool = False,

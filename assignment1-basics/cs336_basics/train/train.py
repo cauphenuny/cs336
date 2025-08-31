@@ -14,7 +14,7 @@ from ..network.models import TransformerLM
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
-from ..network.multiplatform import ACCL_DEVICE, profile
+from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend
 from ..network import functional
 from .dataset import TextDataLoader, TextDataset
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
@@ -245,6 +245,8 @@ def main():
             )
         model.train()
         return vloss, vperp
+
+    model.compile(backend=compile_backend())
 
     with profile(enable=args.profile, json_trace_file=trace_path if args.profile else None) as prof:
         try:
