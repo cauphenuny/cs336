@@ -1,6 +1,4 @@
-def cost(
-    name: str, batch_size, seq_len, d_model, d_ff, num_heads, num_layers, vocab_size
-):
+def cost(name: str, batch_size, seq_len, d_model, d_ff, num_heads, num_layers, vocab_size):
     """
     1. Embeddings: $0$
     2. TransformerBlock:
@@ -22,7 +20,7 @@ def cost(
 
     output = 2 * batch_size * seq_len * d_model * vocab_size
     all = attn + ffn + output
-    print(f"{name} | {all} | ", end="")
+    print(f"{name} | {all / 1024 / 1024:,.2f} M | ", end="")
     print(f"attn: {attn}/{attn / all * 100:.2f}%", end="\t")
     print(f"ffn: {ffn}/{ffn / all * 100:.2f}%", end="\t")
     print(f"output: {output}/{output / all * 100:.2f}%")

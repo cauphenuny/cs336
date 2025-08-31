@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 from loguru import logger
 import wandb
 from jaxtyping import Float
@@ -7,6 +8,7 @@ import torch
 import numpy as np
 from torch import Tensor
 from tqdm import tqdm
+from typing import Literal
 
 from ..network.models import TransformerLM
 from .. import optimize
@@ -27,6 +29,9 @@ parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--log_interval", type=int, default=10)
 parser.add_argument("--val_interval", type=int, default=500)
 
+parser.add_argument(
+    "--model_preset", type=str, choices=["nano", "micro", "small", "medium", "large", "huge", "ultimate"]
+)
 parser.add_argument("--vocab_size", type=int, default=10000)
 parser.add_argument("--context_length", type=int, default=256)
 parser.add_argument("--d_model", type=int, default=512)
@@ -45,8 +50,44 @@ parser.add_argument("--eps", type=float, default=1e-8)
 parser.add_argument("--weight_decay", type=float, default=0.01)
 
 
+def load_preset(preset: Literal["nano", "micro", "small", "medium", "large", "huge", "ultimate"]):
+    presets = {
+        "nano": dict(
+            d_model=128, d_ff=320, num_heads=4, num_layers=2, batch_size=128, lr=5e-4, max_train_tokens=20_480_000
+        ),
+        "micro": dict(
+            d_model=256, d_ff=640, num_heads=8, num_layers=4, batch_size=128, lr=5e-4, max_train_tokens=81_920_000
+        ),
+        "small": dict(
+            d_model=512, d_ff=1344, num_heads=16, num_layers=4, batch_size=64, lr=3e-4, max_train_tokens=327_680_000
+        ),
+        "medium": dict(
+            d_model=512, d_ff=1344, num_heads=16, num_layers=8, batch_size=32, lr=3e-4, max_train_tokens=327_680_000
+        ),
+        "large": dict(
+            d_model=768, d_ff=2048, num_heads=16, num_layers=12, batch_size=32, lr=3e-4, max_train_tokens=655_360_000
+        ),
+        "huge": dict(
+            d_model=1024, d_ff=2888, num_heads=16, num_layers=16, batch_size=16, lr=2e-4, max_train_tokens=1_310_720_000
+        ),
+        "ultimate": dict(
+            d_model=1536, d_ff=4096, num_heads=16, num_layers=24, batch_size=8, lr=1e-4, max_train_tokens=2_621_440_000
+        ),
+    }
+    if preset not in presets:
+        raise ValueError(f"Unknown preset: {preset}")
+    args = presets[preset]
+    for k, v in args.items():
+        if parser.get_default(k) != v:
+            logger.info(f"Setting {k} to {v} (was {parser.get_default(k)})")
+            parser.set_defaults(**{k: v})
+
+
 def main():
     args = parser.parse_args()
+    if args.model_preset is not None:
+        load_preset(args.model_preset)
+        args = parser.parse_args()
     wandb.login(key=os.environ["WANDB_API_KEY"])
     device = ACCL_DEVICE
     model_args = dict(
@@ -167,8 +208,8 @@ def main():
                 best_loss=best_loss,
                 best_perplexity=best_perplexity,
             )
+            print("\r\033[K", file=sys.stderr, end="")  # clear line
             logger.info(
-                "\r\033[K"
                 f"Saved checkpoint to {', '.join(outputs)}. loss: {vloss:.3f}/{best_loss:.3f}, perplexity: {vperp:.3f}/{best_perplexity:.3f}"
             )
         model.train()
