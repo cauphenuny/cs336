@@ -266,9 +266,7 @@ class MultiheadSelfAttention(Module):
             k = self.rope(k, token_positions)
         if self.casual:
             seq_len = x.shape[-2]
-            mask = torch.arange(seq_len).reshape(-1, 1) >= torch.arange(seq_len)
-            # print(mask)
-            mask = mask.to(self.device)
+            mask = torch.arange(seq_len, device=self.device).reshape(-1, 1) >= torch.arange(seq_len, device=self.device)
         else:
             mask = None
         attn_output = functional.scaled_dot_product_attention(q, k, v, mask=mask)

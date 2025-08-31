@@ -1,10 +1,8 @@
-from re import S
-from click.core import F
 from jaxtyping import Int, Float
 import numpy as np
 import random
 import torch
-from typing import Type
+from typing import Type, Literal
 from loguru import logger
 
 
@@ -71,12 +69,11 @@ class TextDataLoader:
         context_length: int,
         batch_size: int,
         limit: int,
-        limit_type: str = "total_tokens",
+        limit_type: Literal["total_tokens", "train_steps"] = "total_tokens",
         vocab_size: int | None = None,
         dataset_dtype=np.int16,
         device: torch.device | str | None = None,
     ):
-        assert limit_type in ("total_tokens", "train_steps")
         self.data = np.memmap(path, dtype=dataset_dtype, mode="r")
         # self.data = np.load(path)
         self.context_length = context_length
@@ -90,6 +87,7 @@ class TextDataLoader:
         else:
             raise ValueError(f"Unknown limit_type: {limit_type}")
         self.cur_iter = 0
+        self.start_iter = 0
         logger.info(
             f"Loaded dataset {path}, data.dtype: {self.data.dtype}, data.shape: {self.data.shape}, context: {self.context_length}, batch: {self.batch_size}, max_iter: {self.max_iter}"
         )
@@ -98,7 +96,7 @@ class TextDataLoader:
         return self.max_iter
 
     def __iter__(self):
-        self.cur_iter = 0
+        self.cur_iter = self.start_iter
         return self
 
     def __next__(self):
@@ -120,3 +118,6 @@ class TextDataLoader:
             return input, target
         else:
             raise StopIteration
+
+    def set_start_iter(self, start_iter: int):
+        self.start_iter = start_iter

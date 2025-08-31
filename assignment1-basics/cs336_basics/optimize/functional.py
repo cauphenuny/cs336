@@ -20,9 +20,13 @@ def lr_cosine_schedule(
     return min_learning_rate + (max_learning_rate - min_learning_rate) * cosine_decay
 
 
-def gradient_clip(
-    params: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: float = 1e-6
-):
+def gradient_norm(params: Iterable[torch.nn.Parameter]):
+    grads = [p.grad for p in params if p.grad is not None]
+    total_norm = torch.stack([g.norm() for g in grads]).norm()
+    return total_norm.item()
+
+
+def gradient_clip(params: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: float = 1e-6):
     grads = [p.grad for p in params if p.grad is not None]
     total_norm = torch.stack([g.norm() for g in grads]).norm()
     if total_norm > max_l2_norm:

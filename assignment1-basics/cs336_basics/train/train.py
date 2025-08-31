@@ -9,12 +9,13 @@ from torch import Tensor
 from tqdm import tqdm
 
 from ..network.models import TransformerLM
-from ..tokenize.tokenizer import Tokenizer
+from .. import optimize
 from ..optimize.optimizers import AdamW
+from ..optimize.lr_scheduler import CosineLRScheduler
 from ..network.multiplatform import ACCL_DEVICE
 from ..network import functional
 from .dataset import TextDataLoader, TextDataset
-from .checkpoint import save_checkpoint, load_checkpoint
+from .checkpoint import save_checkpoint, load_checkpoint, save_model
 
 parser = argparse.ArgumentParser()
 
@@ -24,7 +25,7 @@ parser.add_argument("--project", type=str, default="CS336 - Assignment 1")
 parser.add_argument("--name", type=str, default="experiment")
 parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--log_interval", type=int, default=10)
-parser.add_argument("--val_interval", type=int, default=200)
+parser.add_argument("--val_interval", type=int, default=500)
 
 parser.add_argument("--vocab_size", type=int, default=10000)
 parser.add_argument("--context_length", type=int, default=256)
@@ -37,6 +38,7 @@ parser.add_argument("--max_train_tokens", type=int, default=327_680_000)
 
 parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--min_lr", type=float, default=1e-6)
 parser.add_argument("--beta1", type=float, default=0.9)
 parser.add_argument("--beta2", type=float, default=0.999)
 parser.add_argument("--eps", type=float, default=1e-8)
@@ -46,12 +48,6 @@ parser.add_argument("--weight_decay", type=float, default=0.01)
 def main():
     args = parser.parse_args()
     wandb.login(key=os.environ["WANDB_API_KEY"])
-    run = wandb.init(
-        project=args.project,
-        name=args.name,
-        config=vars(args),
-    )
-
     device = ACCL_DEVICE
     model_args = dict(
         vocab_size=args.vocab_size,
@@ -89,66 +85,124 @@ def main():
         vocab_size=args.vocab_size,
         # device=device,
     )
+    lr_scheduler = CosineLRScheduler(
+        optimizer,
+        total_steps=len(train_loader),
+        min_lr=args.min_lr,
+    )
 
+    run_id = None
+    start_iter = 0
     best_loss = float("inf")
     best_perplexity = float("inf")
+
+    if args.resume is not None:
+        if os.path.isfile(args.resume):
+            ckpt = load_checkpoint(args.resume, model=model, optimizer=optimizer)
+            run_id = ckpt.get("run_id", None)
+            start_iter = ckpt.get("iter", 0)
+            best_loss = ckpt.get("best_loss", float("inf"))
+            best_perplexity = ckpt.get("best_perplexity", float("inf"))
+            logger.info(f"Resumed from checkpoint {args.resume} at iteration {start_iter}.")
+            start_iter += 1
+            train_loader.set_start_iter(start_iter)
+        else:
+            logger.error(f"Checkpoint file {args.resume} does not exist.")
+
+    run = wandb.init(
+        project=args.project,
+        name=args.name,
+        config=vars(args),
+        id=run_id,
+        resume="allow",
+    )
+
     train_path = os.path.join(args.output, args.name + f"-{run.id}")
     os.makedirs(train_path, exist_ok=True)
     checkpoint_path = os.path.join(train_path, "checkpoint.pt")
-    best_checkpoint_path = os.path.join(train_path, "best_checkpoint.pt")
+    best_model_path = os.path.join(train_path, "best_model.pt")
 
     def validate():
         nonlocal best_loss, best_perplexity
         model.eval()
         with torch.no_grad():
-            vlosses = []
-            vperps = []
-            pbar = tqdm(val_loader, desc="Validation")
-            for input, target in pbar:
-                input, target = input.to(device), target.to(device)
-                output_logits = model(input)
-                loss = functional.cross_entropy(output_logits, target).mean()
-                perplexity = functional.perplexity(output_logits, target).mean()
-                vlosses.append(loss.item())
-                vperps.append(perplexity.item())
-                pbar.set_postfix(v_loss=f"{loss.item():.3f}", v_perplexity=f"{perplexity.item():.3f}")
-            vloss = float(np.mean(vlosses))
-            vperp = float(np.mean(vperps))
+            with tqdm(val_loader, desc="Validation") as pbar:
+                vlosses = []
+                vperps = []
+                for input, target in pbar:
+                    input, target = input.to(device), target.to(device)
+                    output_logits = model(input)
+                    loss = functional.cross_entropy(output_logits, target).mean()
+                    perplexity = functional.perplexity(output_logits, target).mean()
+                    vlosses.append(loss.item())
+                    vperps.append(perplexity.item())
+                    vloss = float(np.mean(vlosses))
+                    vperp = float(np.mean(vperps))
+                    pbar.set_postfix(v_loss=f"{vloss:.3f}", v_perplexity=f"{vperp:.3f}")
             wandb.log(
                 {"val_loss": vloss, "val_perplexity": vperp},
                 step=step,
             )
-        save_checkpoint(
-            checkpoint_path, model=model, optimizer=optimizer, iter=step, model_args=model_args, run_id=run.id
-        )
-        if vloss < best_loss:
-            best_loss = vloss
-            best_perplexity = vperp
+            outputs = [checkpoint_path]
+            if vloss < best_loss:
+                best_loss = vloss
+                best_perplexity = vperp
+                save_model(
+                    best_model_path,
+                    model=model,
+                    iter=step,
+                    model_args=model_args,
+                    run_id=run.id,
+                    best_loss=best_loss,
+                    best_perplexity=best_perplexity,
+                )
+                outputs.append(best_model_path)
             save_checkpoint(
-                best_checkpoint_path, model=model, optimizer=optimizer, iter=step, model_args=model_args, run_id=run.id
+                checkpoint_path,
+                model=model,
+                optimizer=optimizer,
+                iter=step,
+                model_args=model_args,
+                run_id=run.id,
+                best_loss=best_loss,
+                best_perplexity=best_perplexity,
+            )
+            logger.info(
+                "\r\033[K"
+                f"Saved checkpoint to {', '.join(outputs)}. loss: {vloss:.3f}/{best_loss:.3f}, perplexity: {vperp:.3f}/{best_perplexity:.3f}"
             )
         model.train()
         return vloss, vperp
 
-    pbar = tqdm(train_loader)
-
-    for step, (input, target) in enumerate(pbar):
-        optimizer.zero_grad()
-        # logger.debug(f"Train Step {step}: {input.shape = }, {target.shape = }, {input.dtype = }")
-        input, target = input.to(device), target.to(device)
-        output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
-        loss = functional.cross_entropy(output_logits, target).mean()
-        loss.backward()
-        optimizer.step()
-        if step % args.log_interval == 0:
-            wandb.log(
-                {"train_loss": loss.item()},
-                step=step,
-            )
-        pbar.set_postfix(loss=f"{loss.item():.3f}")
-        if (step + 1) % args.val_interval == 0:
-            validate()
-    validate()
+    try:
+        with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step") as pbar:
+            for step, (input, target) in enumerate(pbar, start=start_iter):
+                current_lr = lr_scheduler.update(step)
+                optimizer.zero_grad()
+                # logger.debug(f"Train Step {step}: {input.shape = }, {target.shape = }, {input.dtype = }")
+                input, target = input.to(device), target.to(device)
+                output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
+                loss = functional.cross_entropy(output_logits, target).mean()
+                loss.backward()
+                grad = optimize.functional.gradient_norm(model.parameters())
+                optimizer.step()
+                if step % args.log_interval == 0:
+                    wandb.log(
+                        {"train_loss": loss.item(), "grad": grad},
+                        step=step,
+                    )
+                lr_str = (
+                    "[" + ", ".join([f"{lr:.3e}" for lr in current_lr]) + "]"
+                    if isinstance(current_lr, list)
+                    else f"{current_lr:.3e}"
+                )
+                pbar.set_postfix(lr=lr_str, grad=f"{grad:.3e}", loss=f"{loss.item():.3f}")
+                if (step + 1) % args.val_interval == 0:
+                    validate()
+    except KeyboardInterrupt:
+        logger.warning("Training interrupted by user.")
+    else:
+        validate()
 
 
 if __name__ == "__main__":

@@ -25,6 +25,22 @@ def save_checkpoint(
     torch.save(checkpoint, out)
 
 
+def save_model(
+    out: str | os.PathLike | typing.BinaryIO | typing.IO[bytes],
+    model: torch.nn.Module,
+    iter: int,
+    model_args: dict,
+    **kwargs,
+):
+    checkpoint = {
+        "model": model.state_dict(),
+        "iter": iter,
+        "model_args": model_args,
+        **kwargs,
+    }
+    torch.save(checkpoint, out)
+
+
 def load_checkpoint(
     src: str | os.PathLike | typing.BinaryIO | typing.IO[bytes],
     model: torch.nn.Module,
