@@ -23,6 +23,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--profile", action="store_true", default=False)
 parser.add_argument("--compile", action="store_true", default=False)
+parser.add_argument("--max_epoch", type=int)
 
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output", type=str, default="outputs")
@@ -174,6 +175,9 @@ def main():
             logger.info(f"Resumed from checkpoint {args.resume} at iteration {start_iter}.")
             start_iter += 1
             train_loader.set_start_iter(start_iter)
+            if start_iter >= len(train_loader):
+                logger.error(f"Start iteration {start_iter} exceeds total training steps {len(train_loader)}.")
+                exit(1)
         else:
             logger.error(f"Checkpoint file {args.resume} does not exist.")
 
@@ -254,6 +258,7 @@ def main():
 
     with profile(enable=args.profile, json_trace_file=trace_path if args.profile else None) as prof:
         try:
+            epoch_cnt = 0
             with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step") as pbar:
                 train_loss = float("nan")
                 grad = float("nan")
@@ -276,10 +281,14 @@ def main():
                         pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
                     optimizer.step()
                     pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
-                    if (step + 1) % args.val_interval == 0:
-                        validate()
                     if prof:
                         prof.step()
+                    if (step + 1) % args.val_interval == 0:
+                        validate()
+                        epoch_cnt += 1
+                        if args.max_epoch and epoch_cnt >= args.max_epoch:
+                            logger.info(f"Reached max epoch {args.max_epoch}, stopping training.")
+                            break
         except KeyboardInterrupt:
             logger.warning("Training interrupted by user.")
         else:
