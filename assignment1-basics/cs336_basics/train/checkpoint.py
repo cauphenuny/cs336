@@ -80,9 +80,9 @@ def load_model(src: str | os.PathLike | typing.BinaryIO | typing.IO[bytes]):
     return model
 
 
-def find_models(path: str = ".", pattern="*model.pt"):
+def find_models(path: str = ".", pattern="*model.pt", verbose: bool = False):
     pt_files = glob.glob(os.path.join(path, "**", pattern), recursive=True)
-    models: dict[str, tuple[int, float, float]] = {}
+    models: dict[str, tuple[int, float, float, float]] = {}
     for file in pt_files:
         try:
             checkpoint = torch.load(file, map_location="cpu")
@@ -90,19 +90,13 @@ def find_models(path: str = ".", pattern="*model.pt"):
                 checkpoint["iter"],
                 checkpoint.get("loss", float("inf")),
                 checkpoint.get("perplexity", float("inf")),
+                checkpoint.get("train_tokens", float("nan")),
             )
-            torch.save(checkpoint, file)
         except Exception:
             pass
     sorted_models = sorted(models.items(), key=lambda x: (x[1][2], x[1][1], -x[1][0]))
-    return sorted_models
-
-
-def select_model(path: str = ".", pattern: str = "*model.pt", verbose: bool = True):
-    models = find_models(path, pattern)
-    choices = []
     ppl_thresh = [0, 8, 20]
-    for model in models:
+    for model in sorted_models:
         ppl = model[1][2]
         if ppl > ppl_thresh[2]:
             color = "red"
@@ -110,9 +104,17 @@ def select_model(path: str = ".", pattern: str = "*model.pt", verbose: bool = Tr
             color = "yellow"
         else:
             color = "green"
-        name = f"Model: {model[0]}, iter: {model[1][0]}, loss: {model[1][1]:.3f}, perplexity: {colored(f'{model[1][2]:.3f}', color)}"
         if verbose:
-            logger.info(name)
+            logger.info(
+                f"Model: {model[0]}, train_tokens: {model[1][3] / 1024 / 1024:,.3f}M (iter={model[1][0]}) loss: {model[1][1]:.3f}, perplexity: {colored(f'{model[1][2]:.3f}', color)}"
+            )
+    return sorted_models
+
+
+def select_model(path: str = ".", pattern: str = "*model.pt", verbose: bool = True):
+    models = find_models(path, pattern, verbose=verbose)
+    choices = []
+    for model in models:
         choices.append(
             {
                 "name": f"{model[0]}, iter={model[1][0]}, ppl={model[1][2]:.3f}",

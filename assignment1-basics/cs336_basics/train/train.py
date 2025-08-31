@@ -22,6 +22,7 @@ from .checkpoint import save_checkpoint, load_checkpoint, save_model
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--profile", action="store_true", default=False)
+parser.add_argument("--compile", action="store_true", default=False)
 
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output", type=str, default="outputs")
@@ -218,13 +219,14 @@ def main():
                 save_model(
                     best_model_path,
                     model=model,
-                    iter=step,
+                    iter=step + 1,
                     model_args=model_args,
                     run_id=run.id,
                     best_loss=best_loss,
                     best_perplexity=best_perplexity,
                     loss=vloss,
                     perplexity=vperp,
+                    train_tokens=step * args.batch_size * args.context_length,
                 )
                 outputs.append(best_model_path)
             save_checkpoint(
@@ -238,6 +240,7 @@ def main():
                 best_perplexity=best_perplexity,
                 loss=vloss,
                 perplexity=vperp,
+                train_tokens=step * args.batch_size * args.context_length,
             )
             print("\r\033[K", file=sys.stderr, end="")  # clear line
             logger.info(
@@ -246,7 +249,8 @@ def main():
         model.train()
         return vloss, vperp
 
-    model.compile(backend=compile_backend())
+    if args.compile:
+        model.compile(backend=compile_backend())
 
     with profile(enable=args.profile, json_trace_file=trace_path if args.profile else None) as prof:
         try:
