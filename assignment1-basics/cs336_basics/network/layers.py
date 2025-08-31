@@ -37,7 +37,7 @@ class Linear(Module):
         self,
         in_features: int,
         out_features: int,
-        weight: Float[Tensor, " d_out d_in"] | None = None,
+        weight: tuple[Float[Tensor, " d_out d_in"], bool] | None = None,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
@@ -46,12 +46,14 @@ class Linear(Module):
         self.out_features = out_features
         # self.device = device
         self.dtype = dtype
+        init = True
         if weight is not None:
-            self.weight = weight
+            self.weight, init = weight
         else:
             self.weight: Float[Tensor, "d_out d_in"] = torch.nn.Parameter(
                 torch.empty(out_features, in_features, device=device, dtype=dtype)
             )
+        if init:
             std = (2 / (in_features + out_features)) ** 0.5
             torch.nn.init.trunc_normal_(self.weight, mean=0.0, std=std, a=-3 * std, b=3 * std)
 

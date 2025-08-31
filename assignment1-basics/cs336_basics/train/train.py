@@ -89,9 +89,9 @@ def load_preset(preset: Literal["nano", "micro", "tiny", "small", "medium", "lar
             d_model=1536, d_ff=4096, num_heads=16, num_layers=24, batch_size=8, lr=5e-4, max_train_tokens=2_621_440_000
         ),
     }
-    for p in ("nano", "micro", "tiny", "small"):
+    for p in ("nano", "micro", "tiny"):
         presets[p]["share_embeddings"] = True
-    for p in ("medium", "large", "huge", "ultimate"):
+    for p in ("small", "medium", "large", "huge", "ultimate"):
         presets[p]["share_embeddings"] = False
 
     if preset not in presets:
@@ -247,6 +247,7 @@ def main():
                 output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
                 loss = functional.cross_entropy(output_logits, target).mean()
                 loss.backward()
+                optimize.functional.gradient_clip(model.parameters(), 2.0)
                 grad = optimize.functional.gradient_norm(model.parameters())
                 optimizer.step()
                 if step % args.log_interval == 0:

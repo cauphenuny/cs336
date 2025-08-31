@@ -1,4 +1,5 @@
 import argparse
+import time
 from cs336_basics.train.checkpoint import load_model
 from cs336_basics.network.models import TransformerLM
 from cs336_basics.tokenize.tokenizer import Tokenizer
@@ -6,20 +7,27 @@ from cs336_basics.optimize.optimizers import AdamW
 from cs336_basics.train.decode import generate
 
 
-def main(path, tokenizer_name, vocab_size=10000, context_length=256, temperature=1e-5, top_p=0.9):
+def main(path, tokenizer_name, vocab_size=10000, context_length=2048, temperature=1e-5, top_p=0.9):
     model = load_model(path)
     tokenizer = Tokenizer.from_name(tokenizer_name, vocab_size, special_tokens=["<|endoftext|>"])
     while True:
         prompt = input(">>> ")
-        text = generate(
-            prompt,
-            model,
-            tokenizer,
-            max_length=context_length,
-            temperature=temperature,
-            top_p=top_p,
-        )
-        print(text)
+        print(prompt, end="")
+        start = time.time()
+        for i, text in enumerate(
+            generate(
+                prompt,
+                model,
+                tokenizer,
+                max_length=context_length,
+                temperature=temperature,
+                top_p=top_p,
+                flush=True,
+            )
+        ):
+            print(text, end="", flush=True)
+        duration = time.time() - start
+        print(f"\n(total: {i}, {i / duration:.3f}iter/s)")
 
 
 if __name__ == "__main__":

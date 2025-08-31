@@ -52,6 +52,7 @@ class TransformerLM(Module):
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
+        self.context_length = context_length
         self.token_embeddings = Embedding(vocab_size, d_model, device=device, dtype=dtype)
         self.layers = ModuleList(
             [
@@ -73,7 +74,7 @@ class TransformerLM(Module):
             vocab_size,
             device=device,
             dtype=dtype,
-            weight=self.token_embeddings.weight if share_embeddings else None,
+            weight=(self.token_embeddings.weight, True) if share_embeddings else None,
         )
 
         transformer_param = self.layers.param_size + self.ln_final.param_size
@@ -102,20 +103,34 @@ class TransformerLM(Module):
         end: int = 0,
         max_length: int = 2048,
         temperature: float = 1e-5,
-        top_p=0.9,
-    ) -> Int[torch.Tensor, " gen_len"]:
+        top_p: float = 0.9,
+        flush: bool = True,
+    ):
         self.eval()
+        output = torch.tensor([], device=input.device)
         with torch.no_grad():
-            pbar = tqdm.tqdm(range(max_length), desc="Generating")
+            pbar = range(max_length)
+            if not flush:
+                pbar = tqdm.tqdm(range(max_length), desc="Generating")
             try:
                 for _ in pbar:
                     logits = self(input)
                     probs = functional.softmax(logits[-1, :] / temperature, dim=-1)
                     next_token = functional.nucleus_sampling(probs, top_p)
-                    input = torch.cat([input, next_token])
+                    # output = torch.cat([output, next_token])
+                    if flush:
+                        yield int(next_token.item())
+                    else:
+                        output = torch.cat([output, next_token])
+                    if input.numel() < self.context_length:
+                        input = torch.cat([input, next_token])
+                    else:
+                        input = torch.cat([input[1:], next_token])
                     if next_token.item() == end:
                         break
             except KeyboardInterrupt:
                 logger.info("Generation interrupted by user.")
-            # pbar.
-        return input
+        if not flush:
+            for id in output.tolist():
+                yield id
+        # return output

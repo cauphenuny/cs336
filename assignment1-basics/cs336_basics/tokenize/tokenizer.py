@@ -148,10 +148,10 @@ class Tokenizer:
         for text in iterable:
             yield from self.encode(text)
 
-    def decode(self, ids: list[int]) -> str:
+    def decode(self, ids: list[int], errors="replace") -> str:
         tokens = [self.vocab[token_id] for token_id in ids]
         byte_sequence = b"".join(tokens)
-        return byte_sequence.decode("utf-8", errors="replace")
+        return byte_sequence.decode("utf-8", errors=errors)
 
     def partial_decode(self, ids: list[int]) -> list[str]:
         return [self.vocab[token_id].decode("utf-8", errors="replace") for token_id in ids]

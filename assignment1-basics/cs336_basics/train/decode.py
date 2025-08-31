@@ -11,16 +11,24 @@ def generate(
     temperature: float = 1e-5,
     top_p: float = 0.9,
     end_token: str | bytes = b"<|endoftext|>",
-) -> str:
+    flush: bool = True,
+):
     input_ids = tokenizer.encode(input_text)
     input_tensor = torch.tensor(input_ids, device=model.device)
-    output = model.generate(
+    output_ids: list[int] = []
+    for output_id in model.generate(
         input_tensor,
         end=tokenizer.token_id(end_token),
         max_length=max_length,
         temperature=temperature,
         top_p=top_p,
-    )
-    output_ids: list[int] = output.tolist()
-    return tokenizer.decode(output_ids)
-
+        flush=flush,
+    ):
+        output_ids.append(output_id)
+        try:
+            yield tokenizer.decode(output_ids, errors="strict")
+            output_ids = []
+        except UnicodeDecodeError:
+            pass
+    if output_ids:
+        yield tokenizer.decode(output_ids)
