@@ -43,8 +43,7 @@ class TextDataset(torch.utils.data.Dataset):
         dataset_dtype=np.int16,
     ):
         self.path = path
-        self.data = np.memmap(path, dtype=dataset_dtype, mode="r")
-        # self.data = np.load(path)
+        self.data = np.load(path, mmap_mode="r")
         self.context_length = context_length
         self.device = device
         logger.info(
@@ -74,8 +73,8 @@ class TextDataLoader:
         dataset_dtype=np.int16,
         device: torch.device | str | None = None,
     ):
-        self.data = np.memmap(path, dtype=dataset_dtype, mode="r")
-        # self.data = np.load(path)
+        self.path = path
+        self.data = np.load(path, mmap_mode="r")
         self.context_length = context_length
         self.device = device
         self.batch_size = batch_size
@@ -101,23 +100,41 @@ class TextDataLoader:
 
     def __next__(self):
         if self.cur_iter < self.max_iter:
-            input, target = get_batch(
-                self.data,
-                batch_size=self.batch_size,
-                context_length=self.context_length,
-                device=self.device,
-            )
             self.cur_iter += 1
-            if self.vocab_size:
-                assert torch.max(input) < self.vocab_size, (
-                    f"Input token {torch.max(input)} exceeds vocab size {self.vocab_size}"
-                )
-                assert torch.max(target) < self.vocab_size, (
-                    f"Target token {torch.max(target)} exceeds vocab size {self.vocab_size}"
-                )
-            return input, target
+            return self._get_data()
         else:
             raise StopIteration
+
+    def _get_data(self) -> tuple[torch.Tensor, torch.Tensor]:
+        input, target = get_batch(
+            self.data,
+            batch_size=self.batch_size,
+            context_length=self.context_length,
+            device=self.device,
+        )
+        if self.vocab_size:
+            regenerate = False
+            if torch.max(input) >= self.vocab_size:
+                logger.warning(
+                    f"Input token {torch.max(input)} exceeds vocab size {self.vocab_size}, regenerating batch"
+                )
+                regenerate = True
+            if torch.max(target) >= self.vocab_size:
+                logger.warning(
+                    f"Target token {torch.max(target)} exceeds vocab size {self.vocab_size}, regenerating batch"
+                )
+                regenerate = True
+            if regenerate:
+                return self._get_data()
+        return input, target
+
+    def check(self):
+        if not self.vocab_size:
+            logger.warning("Vocab size not set, skipping check.")
+            return
+        for i, token in enumerate(self.data):
+            if token >= self.vocab_size:
+                logger.error(f"Token {token} at index {i} exceeds vocab size {self.vocab_size}, file: {self.path}")
 
     def set_start_iter(self, start_iter: int):
         self.start_iter = start_iter

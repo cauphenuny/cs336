@@ -24,6 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--profile", action="store_true", default=False)
 parser.add_argument("--compile", action="store_true", default=False)
 parser.add_argument("--max_epoch", type=int)
+parser.add_argument("--check_dataset", action="store_true", default=False)
 
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output", type=str, default="outputs")
@@ -32,6 +33,7 @@ parser.add_argument("--name", type=str, default="experiment")
 parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--log_interval", type=int, default=10)
 parser.add_argument("--val_interval", type=int, default=500)
+parser.add_argument("--val_sample", type=int, default=20)
 
 parser.add_argument(
     "--model_preset", type=str, choices=["nano", "micro", "tiny", "small", "medium", "large", "huge", "ultimate"]
@@ -149,7 +151,7 @@ def main():
         path=os.path.join(args.dataset, f"valid-{args.vocab_size}.npy"),
         context_length=args.context_length,
         batch_size=args.batch_size,
-        limit=20,
+        limit=args.val_sample,
         limit_type="train_steps",
         vocab_size=args.vocab_size,
         # device=device,
@@ -159,6 +161,10 @@ def main():
         total_steps=len(train_loader),
         min_lr=args.min_lr,
     )
+
+    if args.check_dataset:
+        train_loader.check()
+        val_loader.check()
 
     run_id = None
     start_iter = 0
