@@ -1,4 +1,3 @@
-from sympy import Mul
 import torch
 import einops
 from jaxtyping import Float, Int
@@ -14,6 +13,10 @@ class Module(torch.nn.Module):
     @property
     def param_size(self):
         return sum(p.numel() for p in self.parameters())
+
+    @property
+    def model_size(self):
+        return self.param_size + sum(b.numel() for b in self.buffers())
 
     @property
     def device(self):

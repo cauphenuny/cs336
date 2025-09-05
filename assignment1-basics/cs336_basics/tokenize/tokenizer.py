@@ -1,7 +1,8 @@
-from typing import TypeAlias
+from typing import IO, TypeAlias
 from collections import Counter
 from collections.abc import Iterable
 from loguru import logger
+from numpy import isin
 from tqdm import tqdm
 from bidict import bidict
 from .. import cpp_extensions
@@ -93,7 +94,10 @@ def train_bpe(
 
 class Tokenizer:
     def __init__(
-        self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None
+        self,
+        vocab: dict[int, bytes],
+        merges: list[tuple[bytes, bytes]],
+        special_tokens: list[str] | None = None,
     ):
         self.vocab = vocab
         self.inverse_vocab = {b: i for i, b in vocab.items()}
@@ -185,38 +189,65 @@ class Tokenizer:
         num_processes: int | None = None,
     ) -> "Tokenizer":
         return Tokenizer(
-            *train_bpe(input_path, vocab_size, special_tokens, is_pretokenized, num_processes), special_tokens
+            *train_bpe(input_path, vocab_size, special_tokens, is_pretokenized, num_processes),
+            special_tokens,
         )
 
     @classmethod
     def from_files(
         cls,
-        vocab_filepath: str | os.PathLike,
-        merges_filepath: str | os.PathLike,
-        special_tokens: list[str] | None = None,
+        vocab_file: str | os.PathLike | IO[bytes],
+        merges_file: str | os.PathLike | IO[bytes],
+        special_tokens: list[str] | None = ["<|endoftext|>"],
     ) -> "Tokenizer":
-        with open(vocab_filepath) as f:
-            encoded_vocab = json.load(f)
-            vocab = {int(k): base64.b64decode(v.encode("ascii")) for k, v in encoded_vocab.items()}
-        with open(merges_filepath) as f:
-            encoded_merges = json.load(f)
-            merges = [
-                (base64.b64decode(m[0].encode("ascii")), base64.b64decode(m[1].encode("ascii"))) for m in encoded_merges
-            ]
+        if isinstance(vocab_file, (str, os.PathLike)):
+            with open(vocab_file) as f:
+                encoded_vocab = json.load(f)
+        else:
+            encoded_vocab = json.load(vocab_file)
+        vocab = {int(k): base64.b64decode(v.encode("ascii")) for k, v in encoded_vocab.items()}
+        if isinstance(merges_file, (str, os.PathLike)):
+            with open(merges_file) as f:
+                encoded_merges = json.load(f)
+        else:
+            encoded_merges = json.load(merges_file)
+        merges = [
+            (
+                base64.b64decode(m[0].encode("ascii")),
+                base64.b64decode(m[1].encode("ascii")),
+            )
+            for m in encoded_merges
+        ]
         return Tokenizer(vocab, merges, special_tokens)  # type: ignore[return-value]
 
     @classmethod
-    def from_name(cls, name: str, vocab_size: int, special_tokens: list[str] | None = None):
-        return cls.from_files(
-            f"{name}-{vocab_size}-vocab.json",
-            f"{name}-{vocab_size}-merges.json",
-            special_tokens=special_tokens,
-        )
+    def from_name(
+        cls,
+        name: str | os.PathLike,
+        vocab_size: int | None = None,
+        special_tokens: list[str] | None = ["<|endoftext|>"],
+    ):
+        if vocab_size:
+            return cls.from_files(
+                f"{name}-{vocab_size}-vocab.json",
+                f"{name}-{vocab_size}-merges.json",
+                special_tokens=special_tokens,
+            )
+        else:
+            return cls.from_files(
+                f"{name}-vocab.json",
+                f"{name}-merges.json",
+                special_tokens=special_tokens,
+            )
 
     def to_files(self, vocab_filepath: str | os.PathLike, merges_filepath: str | os.PathLike) -> None:
         encoded_vocab = {k: base64.b64encode(v).decode("ascii") for k, v in self.vocab.items()}
         encoded_merges = [
-            (base64.b64encode(m[0]).decode("ascii"), base64.b64encode(m[1]).decode("ascii")) for m in self.merges
+            (
+                base64.b64encode(m[0]).decode("ascii"),
+                base64.b64encode(m[1]).decode("ascii"),
+            )
+            for m in self.merges
         ]
 
         with open(vocab_filepath, "w") as f:

@@ -1,8 +1,10 @@
+import os
 import torch
 import tqdm
+from . import functional
 from .layers import Module, ModuleList
 from .layers import RMSNorm, MultiheadSelfAttention, FeedForward, Embedding, Linear
-from . import functional
+from ..tokenize.tokenizer import Tokenizer
 from jaxtyping import Float, Int
 from loguru import logger
 
@@ -37,7 +39,7 @@ class TransformerBlock(Module):
         return x
 
 
-class TransformerLM(Module):
+class TransformerModel(Module):
     def __init__(
         self,
         vocab_size: int,
@@ -96,6 +98,18 @@ class TransformerLM(Module):
         x = self.ln_final(x)
         x = self.lm_head(x)
         return x
+
+    def embed(self, input: Int[torch.Tensor, " seq_len"]) -> Float[torch.Tensor, " seq_len d_model"]:
+        assert input.dtype in (
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.uint8,
+            torch.bool,
+            torch.long,
+        )
+        input = input.to(torch.long)
+        return self.token_embeddings(input)
 
     def generate(
         self,

@@ -10,7 +10,7 @@ from torch import Tensor
 from tqdm import tqdm
 from typing import Literal
 
-from ..network.models import TransformerLM
+from ..network.models import TransformerModel
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
@@ -71,28 +71,42 @@ parser.add_argument("--weight_decay", type=float, default=0.01)
 def load_preset(preset: Literal["nano", "micro", "tiny", "small", "medium", "large", "huge", "ultimate"]):
     presets = {
         "nano": dict(
-            d_model=64, d_ff=256, num_heads=2, num_layers=2, batch_size=128, lr=1e-3, max_train_tokens=40_960_000
+            d_model=64, d_ff=256, num_heads=2, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=40_960_000
         ),
         "micro": dict(
-            d_model=128, d_ff=320, num_heads=4, num_layers=4, batch_size=128, lr=1e-3, max_train_tokens=40_960_000
+            d_model=128, d_ff=320, num_heads=4, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=40_960_000
         ),
         "tiny": dict(
-            d_model=256, d_ff=640, num_heads=8, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=81_920_000
+            d_model=256, d_ff=640, num_heads=8, num_layers=4, batch_size=32, lr=1e-3, max_train_tokens=81_920_000
         ),
         "small": dict(
-            d_model=512, d_ff=1344, num_heads=16, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=327_680_000
+            d_model=512, d_ff=1344, num_heads=16, num_layers=4, batch_size=32, lr=1e-3, max_train_tokens=327_680_000
         ),
         "medium": dict(
-            d_model=512, d_ff=1344, num_heads=16, num_layers=8, batch_size=32, lr=8e-4, max_train_tokens=655_360_000
+            d_model=512, d_ff=1344, num_heads=16, num_layers=8, batch_size=16, lr=8e-4, max_train_tokens=655_360_000
         ),
         "large": dict(
-            d_model=768, d_ff=2048, num_heads=16, num_layers=8, batch_size=32, lr=8e-4, max_train_tokens=655_360_000
+            d_model=768, d_ff=2048, num_heads=16, num_layers=8, batch_size=16, lr=8e-4, max_train_tokens=655_360_000
         ),
         "huge": dict(
-            d_model=1024, d_ff=2888, num_heads=16, num_layers=16, batch_size=16, lr=5e-4, max_train_tokens=1_310_720_000
+            d_model=1024,
+            d_ff=2888,
+            num_heads=16,
+            num_layers=16,
+            context_length=512,
+            batch_size=8,
+            lr=5e-4,
+            max_train_tokens=1_310_720_000,
         ),
         "ultimate": dict(
-            d_model=1536, d_ff=4096, num_heads=16, num_layers=24, batch_size=8, lr=5e-4, max_train_tokens=2_621_440_000
+            d_model=1536,
+            d_ff=4096,
+            num_heads=16,
+            num_layers=24,
+            context_length=512,
+            batch_size=8,
+            lr=5e-4,
+            max_train_tokens=2_621_440_000,
         ),
     }
     for p in ("nano", "micro", "tiny"):
@@ -130,7 +144,7 @@ def main():
         share_embeddings=args.share_embeddings,
         device=device,
     )
-    model = TransformerLM(**model_args)
+    model = TransformerModel(**model_args)
     optimizer = AdamW(
         model.parameters(),
         lr=args.lr,

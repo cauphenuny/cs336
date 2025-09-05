@@ -390,7 +390,7 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    model = cs336_basics.network.models.TransformerLM(
+    model = cs336_basics.network.models.TransformerModel(
         vocab_size=vocab_size,
         context_length=context_length,
         d_model=d_model,
@@ -567,7 +567,7 @@ def run_save_checkpoint(
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
     return cs336_basics.train.checkpoint.save_checkpoint(
-        model=model, optimizer=optimizer, iter=iteration, out=out
+        model=model, optimizer=optimizer, iter=iteration, out=out, model_args={}
     )
 
 
