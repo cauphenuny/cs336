@@ -21,14 +21,23 @@ def main(args):
                 n_warmup=n_warmup,
                 n_step=n_step,
             )
-            models.append(name)
+            models.append(f"{name} (forward, backward)")
+            means.append(mean)
+            stds.append(std)
+            mean, std = cs336_systems.benchmark(
+                dict(**args, context_length=context_length),
+                n_warmup=n_warmup,
+                n_step=n_step,
+                backward=False,
+            )
+            models.append(f"{name} (forward only)")
             means.append(mean)
             stds.append(std)
         df = pd.DataFrame(
             {
                 "model": models,
                 "mean": means,
-                "std": std,
+                "std": stds,
             }
         )
         return df.to_markdown()
