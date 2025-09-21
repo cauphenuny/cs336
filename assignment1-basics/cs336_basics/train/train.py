@@ -10,7 +10,7 @@ from torch import Tensor
 from tqdm import tqdm
 from typing import Literal
 
-from ..network.models import TransformerModel
+from ..network.models import TransformerModel, specifications
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
@@ -41,7 +41,7 @@ parser.add_argument(
 parser.add_argument("--vocab_size", type=int, default=10000)
 parser.add_argument("--context_length", type=int, default=256)
 parser.add_argument("--d_model", type=int, default=512)
-parser.add_argument("--d_ff", type=int, default=1344)
+parser.add_argument("--d_ff", type=int)
 parser.add_argument("--rope_theta", type=float, default=10000.0)
 parser.add_argument("--num_heads", type=int, default=16)
 parser.add_argument("--num_layers", type=int, default=4)
@@ -57,6 +57,11 @@ def convert_to_bool(value: str) -> bool:
 
 
 parser.add_argument("--share_embeddings", type=convert_to_bool, default=False)
+parser.add_argument("--no_norm", type=convert_to_bool, default=False)
+parser.add_argument("--no_rope", type=convert_to_bool, default=False)
+parser.add_argument("--use_silu", type=convert_to_bool, default=False)
+parser.add_argument("--use_postnorm", type=convert_to_bool, default=False)
+
 parser.add_argument("--max_train_tokens", type=int, default=327_680_000)
 
 parser.add_argument("--batch_size", type=int, default=64)
@@ -68,55 +73,28 @@ parser.add_argument("--eps", type=float, default=1e-8)
 parser.add_argument("--weight_decay", type=float, default=0.01)
 
 
-def load_preset(preset: Literal["nano", "micro", "tiny", "small", "medium", "large", "huge", "ultimate"]):
-    presets = {
-        "nano": dict(
-            d_model=64, d_ff=256, num_heads=2, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=40_960_000
-        ),
-        "micro": dict(
-            d_model=128, d_ff=320, num_heads=4, num_layers=4, batch_size=64, lr=1e-3, max_train_tokens=40_960_000
-        ),
-        "tiny": dict(
-            d_model=256, d_ff=640, num_heads=8, num_layers=4, batch_size=32, lr=1e-3, max_train_tokens=81_920_000
-        ),
-        "small": dict(
-            d_model=512, d_ff=1344, num_heads=16, num_layers=4, batch_size=32, lr=1e-3, max_train_tokens=327_680_000
-        ),
-        "medium": dict(
-            d_model=512, d_ff=1344, num_heads=16, num_layers=8, batch_size=16, lr=8e-4, max_train_tokens=655_360_000
-        ),
-        "large": dict(
-            d_model=768, d_ff=2048, num_heads=16, num_layers=8, batch_size=16, lr=8e-4, max_train_tokens=655_360_000
-        ),
-        "huge": dict(
-            d_model=1024,
-            d_ff=2888,
-            num_heads=16,
-            num_layers=16,
-            context_length=512,
-            batch_size=8,
-            lr=5e-4,
-            max_train_tokens=1_310_720_000,
-        ),
-        "ultimate": dict(
-            d_model=1536,
-            d_ff=4096,
-            num_heads=16,
-            num_layers=24,
-            context_length=512,
-            batch_size=8,
-            lr=5e-4,
-            max_train_tokens=2_621_440_000,
-        ),
+def load_preset(
+    preset: Literal[
+        "nano", "micro", "tiny", "small", "medium", "large", "x-large", "xx-large", "3x-large", "4x-large", "5x-large"
+    ],
+):
+    train_presets = {
+        "nano": dict(batch_size=64, lr=1e-3, max_train_tokens=40_960_000),
+        "micro": dict(batch_size=64, lr=1e-3, max_train_tokens=40_960_000),
+        "tiny": dict(batch_size=32, lr=1e-3, max_train_tokens=81_920_000),
+        "small": dict(batch_size=32, lr=1e-3, max_train_tokens=327_680_000),
+        "medium": dict(batch_size=16, lr=8e-4, max_train_tokens=655_360_000),
+        "large": dict(batch_size=16, lr=8e-4, max_train_tokens=655_360_000),
+        "x-large": dict(batch_size=8, lr=5e-4, max_train_tokens=1_310_720_000),
+        "xx-large": dict(batch_size=8, lr=5e-4, max_train_tokens=2_621_440_000),
+        "3x-large": dict(batch_size=4, lr=3e-4, max_train_tokens=5_242_880_000),
+        "4x-large": dict(batch_size=4, lr=3e-4, max_train_tokens=10_485_760_000),
+        "5x-large": dict(batch_size=2, lr=2e-4, max_train_tokens=20_971_520_000),
     }
-    for p in ("nano", "micro", "tiny"):
-        presets[p]["share_embeddings"] = True
-    for p in ("small", "medium", "large", "huge", "ultimate"):
-        presets[p]["share_embeddings"] = False
-
-    if preset not in presets:
+    if preset not in train_presets:
         raise ValueError(f"Unknown preset: {preset}")
-    args = presets[preset]
+    args = {**specifications(preset), **train_presets[preset]}
+
     for k, v in args.items():
         if parser.get_default(k) != v:
             logger.info(f"Setting {k} to {v} (was {parser.get_default(k)})")
@@ -138,11 +116,14 @@ def main():
         context_length=args.context_length,
         d_model=args.d_model,
         d_ff=args.d_ff,
-        rope_theta=args.rope_theta,
+        rope_theta=args.rope_theta if not args.no_rope else None,
         num_heads=args.num_heads,
         num_layers=args.num_layers,
         share_embeddings=args.share_embeddings,
         device=device,
+        norm_type="rms" if not args.no_norm else "none",
+        norm_location="pre" if not args.use_postnorm else "post",
+        ffn_activate="swiglu" if not args.use_silu else "silu",
     )
     model = TransformerModel(**model_args)
     optimizer = AdamW(

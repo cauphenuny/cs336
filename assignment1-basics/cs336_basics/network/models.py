@@ -1,12 +1,12 @@
-import os
 import torch
 import tqdm
 from . import functional
 from .layers import Module, ModuleList
-from .layers import RMSNorm, MultiheadSelfAttention, FeedForward, Embedding, Linear
+from .layers import RMSNorm, MultiheadSelfAttention, FeedForward, Embedding, Linear, Identical
 from ..tokenize.tokenizer import Tokenizer
 from jaxtyping import Float, Int
 from loguru import logger
+from typing import Literal
 
 
 class TransformerBlock(Module):
@@ -19,9 +19,12 @@ class TransformerBlock(Module):
         rope_len: int | None = None,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
+        norm_type: Literal["rms", "none"] = "rms",
+        norm_location: Literal["pre", "post"] = "pre",
+        ffn_activate: Literal["swiglu", "silu"] = "swiglu",
     ):
         super().__init__()
-        self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
+        self.ln1 = RMSNorm(d_model, device=device, dtype=dtype) if norm_type == "rms" else Identical()
         self.attn = MultiheadSelfAttention(
             d_model,
             num_heads,
@@ -30,12 +33,19 @@ class TransformerBlock(Module):
             device=device,
             dtype=dtype,
         )
-        self.ln2 = RMSNorm(d_model, device=device, dtype=dtype)
-        self.ffn = FeedForward(d_model, d_ff, device=device, dtype=dtype)
+        self.ln2 = RMSNorm(d_model, device=device, dtype=dtype) if norm_type == "rms" else Identical()
+        self.ffn = FeedForward(d_model, d_ff, activate=ffn_activate, device=device, dtype=dtype)
+        self.norm_location = norm_location
 
     def forward(self, x: Float[torch.Tensor, " ... seq_len d_model"]):
-        x = x + self.attn(self.ln1(x))
-        x = x + self.ffn(self.ln2(x))
+        if self.norm_location == "pre":
+            x = x + self.attn(self.ln1(x))
+            x = x + self.ffn(self.ln2(x))
+        elif self.norm_location == "post":
+            x = self.ln1(x + self.attn(x))
+            x = self.ln2(x + self.ffn(x))
+        else:
+            raise NotImplementedError(f"unsupported norm_location: {self.norm_location}")
         return x
 
 
@@ -52,8 +62,12 @@ class TransformerModel(Module):
         share_embeddings: bool = False,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
+        norm_type: Literal["rms", "none"] = "rms",
+        norm_location: Literal["pre", "post"] = "pre",
+        ffn_activate: Literal["swiglu", "silu"] = "swiglu",
     ):
         super().__init__()
+
         self.context_length = context_length
         self.token_embeddings = Embedding(vocab_size, d_model, device=device, dtype=dtype)
         self.layers = ModuleList(
@@ -66,11 +80,14 @@ class TransformerModel(Module):
                     rope_len=context_length,
                     device=device,
                     dtype=dtype,
+                    norm_type=norm_type,
+                    norm_location=norm_location,
+                    ffn_activate=ffn_activate,
                 )
                 for _ in range(num_layers)
             ]
         )
-        self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
+        self.ln_final = RMSNorm(d_model, device=device, dtype=dtype) if norm_type == "rms" else Identical()
         self.lm_head = Linear(
             d_model,
             vocab_size,
@@ -145,6 +162,24 @@ class TransformerModel(Module):
             except KeyboardInterrupt:
                 logger.info("Generation interrupted by user.")
         if not flush:
-            for id in output.tolist():
-                yield id
+            yield from output.tolist()
         # return output
+
+
+def specifications(size: str):
+    presets = {
+        "nano": dict(d_model=64, num_heads=2, num_layers=4),
+        "micro": dict(d_model=128, num_heads=4, num_layers=4),
+        "tiny": dict(d_model=256, num_heads=8, num_layers=4),
+        "small": dict(d_model=512, num_heads=16, num_layers=4),
+        "medium": dict(d_model=512, num_heads=16, num_layers=8),
+        "large": dict(d_model=768, num_heads=16, num_layers=8),
+        "x-large": dict(d_model=1024, num_heads=16, num_layers=16),
+        "xx-large": dict(d_model=1536, num_heads=16, num_layers=24),
+        "3x-large": dict(d_model=2048, num_heads=16, num_layers=32),
+        "4x-large": dict(d_model=2560, num_heads=20, num_layers=40),
+        "5x-large": dict(d_model=3072, num_heads=24, num_layers=48),
+    }
+    for name, args in presets.items():
+        args["share_embeddings"] = True if name in ("nano", "micro", "tiny") else False
+    return presets[size]

@@ -2,6 +2,7 @@ import torch
 import einops
 from jaxtyping import Float, Int
 from torch import Tensor
+from typing import Literal
 from . import functional
 
 
@@ -33,6 +34,11 @@ class Module(torch.nn.Module):
 class ModuleList(torch.nn.ModuleList, Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+
+class Identical(Module):
+    def forward(self, x):
+        return x
 
 
 class Linear(Module):
@@ -142,30 +148,49 @@ class RMSNorm(Module):
 
 class FeedForward(Module):
     """
-    SwiGLU Position-Wise Feed-Forward Layer
+    Position-Wise Feed-Forward Layer
     """
 
     def __init__(
         self,
         d_model: int,
         d_ff: int | None = None,
+        activate: Literal["swiglu", "silu"] = "swiglu",
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
 
-        def auto_dim_ff(d_model, align: int = 64):
-            raw_dim = int(8 * d_model / 3)
-            return ((raw_dim + align - 1) // align) * align
+        self.activate = activate
 
-        d_ff = d_ff if d_ff else auto_dim_ff(d_model)
+        if activate == "swiglu":
 
-        self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
-        self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype)
+            def auto_dim_ff(d_model, align: int = 64):
+                raw_dim = int(8 * d_model / 3)
+                return (raw_dim // align) * align
+
+            d_ff = d_ff if d_ff else auto_dim_ff(d_model)
+
+            self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+            self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+            self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype)
+
+        elif activate == "silu":
+            d_ff = d_ff if d_ff else d_model * 4
+
+            self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+            self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+
+        else:
+            raise NotImplementedError(f"unsupported activate func: {activate}")
 
     def forward(self, x: Float[Tensor, "... d_model"]):
-        return functional.swiglu(x, self.w1.weight, self.w2.weight, self.w3.weight)
+        if self.activate == "swiglu":
+            return functional.swiglu(x, self.w1.weight, self.w2.weight, self.w3.weight)
+        elif self.activate == "silu":
+            return self.w2(functional.silu(self.w1(x)))
+        else:
+            raise NotImplementedError(f"unsupported activate func: {self.activate}")
 
 
 class RoPE(Module):
