@@ -36,7 +36,7 @@ parser.add_argument("--val_interval", type=int, default=500)
 parser.add_argument("--val_sample", type=int, default=20)
 
 parser.add_argument(
-    "--model_preset", type=str, choices=["nano", "micro", "tiny", "small", "medium", "large", "huge", "ultimate"]
+    "--model_preset", type=str, choices=["nano", "micro", "tiny", "small", "medium", "large", "x-large", "xx-large ", "3x-large", "4x-large", "5x-large"]
 )
 parser.add_argument("--vocab_size", type=int, default=10000)
 parser.add_argument("--context_length", type=int, default=256)
