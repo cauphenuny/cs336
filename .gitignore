@@ -170,3 +170,4 @@ data/
 **/wandb/
 **/models/
 **/uv.lock
+**/.python-version
