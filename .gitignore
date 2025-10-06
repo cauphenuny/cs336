@@ -171,3 +171,4 @@ data/
 **/models/
 **/uv.lock
 **/.python-version
+**/result*

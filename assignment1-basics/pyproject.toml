@@ -17,9 +17,9 @@ dependencies = [
     "tiktoken>=0.9.0",
     "torch~=2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'", # Intel Macs
     "torch~=2.6.0; sys_platform == 'darwin' and platform_machine == 'arm64'", # Apple Silicon Macs
-    "torch~=2.6.0; sys_platform != 'darwin' and platform_machine == 'x86_64'", # Non-macOS platforms
-    "torch~=2.4.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
-    "torch_npu~=2.4.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
+    "torch~=2.8.0; sys_platform != 'darwin' and platform_machine == 'x86_64'", # Non-macOS platforms
+    "torch~=2.5.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
+    "torch_npu~=2.5.0; sys_platform != 'darwin' and platform_machine != 'x86_64'",
     "tqdm>=4.67.1",
     "wandb>=0.19.7",
     "bidict>=0.23.1",

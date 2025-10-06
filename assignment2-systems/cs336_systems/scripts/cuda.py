@@ -57,5 +57,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # NOTE: recommend context_length: 128, 256, 512, 1024
     parser.add_argument("-l", "--context-length", type=int, default=256, help="Context length for the benchmark")
+    parser.add_argument("-m", "--models", nargs="+", type=str, required=True, help="Model list for benchmarking")
     args = parser.parse_args()
     main(args)
