@@ -16,7 +16,7 @@ from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
 from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend
 from ..network import functional
-from .dataset import TextDataLoader, TextDataset
+from .dataset import TextDataLoader, TorchTextDataLoader
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
 
 parser = argparse.ArgumentParser()
@@ -133,7 +133,7 @@ def main():
         eps=args.eps,
         weight_decay=args.weight_decay,
     )
-    train_loader = TextDataLoader(
+    train_loader = TorchTextDataLoader(
         path=os.path.join(args.dataset, f"train-{args.vocab_size}.npy"),
         context_length=args.context_length,
         batch_size=args.batch_size,
@@ -142,7 +142,7 @@ def main():
         vocab_size=args.vocab_size,
         # device=device,
     )
-    val_loader = TextDataLoader(
+    val_loader = TorchTextDataLoader(
         path=os.path.join(args.dataset, f"valid-{args.vocab_size}.npy"),
         context_length=args.context_length,
         batch_size=args.batch_size,
