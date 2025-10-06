@@ -25,6 +25,7 @@ parser.add_argument("--profile", action="store_true", default=False)
 parser.add_argument("--compile", action="store_true", default=False)
 parser.add_argument("--max_epoch", type=int)
 parser.add_argument("--check_dataset", action="store_true", default=False)
+parser.add_argument("--num_workers", type=int, default=8)
 
 parser.add_argument("--dataset", type=str, required=True)
 parser.add_argument("--output", type=str, default="outputs")
@@ -140,6 +141,7 @@ def main():
         limit=args.max_train_tokens,
         limit_type="total_tokens",
         vocab_size=args.vocab_size,
+        num_workers=args.num_workers,
         # device=device,
     )
     val_loader = TorchTextDataLoader(
@@ -149,6 +151,7 @@ def main():
         limit=args.val_sample,
         limit_type="train_steps",
         vocab_size=args.vocab_size,
+        num_workers=args.num_workers,
         # device=device,
     )
     lr_scheduler = CosineLRScheduler(
