@@ -26,10 +26,19 @@ def gradient_norm(params: Iterable[torch.nn.Parameter]):
     return total_norm
 
 
-def gradient_clip(params: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: float = 1e-6):
-    grads = [p.grad for p in params if p.grad is not None]
-    total_norm = torch.stack([g.norm() for g in grads]).norm()
-    if total_norm > max_l2_norm:
-        scale = max_l2_norm / (total_norm + eps)
-        for g in grads:
-            g.data *= scale
+@torch.no_grad()
+def gradient_clip(parameters, max_l2_norm: float, eps: float = 1e-6):
+    grads = [p.grad.detach() for p in parameters if p.grad is not None]
+    if not grads:
+        return torch.tensor(0.)
+
+    norms = torch.stack([g.norm() for g in grads])
+    total_norm = torch.norm(norms)
+
+    clip_coef = max_l2_norm / (total_norm + 1e-6)
+    clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+
+    for g in grads:
+        g.mul_(clip_coef_clamped)
+
+    return total_norm
