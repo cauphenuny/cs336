@@ -117,3 +117,12 @@ def profile(
         for sort_by in sort_bys:
             logger.info("Profiling results sorted by {}", sort_by)
             print(prof.key_averages().table(sort_by=sort_by, row_limit=row_limit))
+
+
+def device_memory_usage():
+    if ACCL_TYPE == "cuda":
+        return torch.cuda.memory_allocated()
+    elif ACCL_TYPE == "mps":
+        return torch.mps.current_allocated_memory()
+    else:
+        raise NotImplementedError("device_memory_usage is only implemented for CUDA and MPS backends")
