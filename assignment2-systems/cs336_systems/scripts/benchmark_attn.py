@@ -10,12 +10,23 @@ from cs336_basics.network.layers import MultiheadSelfAttention
 from cs336_basics.network import functional as F
 
 
+class Attention(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, query, key, value):
+        return F.scaled_dot_product_attention(query, key, value)
+
+
 def main(args):
     batch_size = args.batch_size
     for d_model in [16, 32, 64, 128]:
         for seq_len in [256, 1024, 4096, 8192, 16384]:
             logger.info(f"Benchmarking d_model={d_model}, seq_len={seq_len}, batch_size={batch_size}")
 
+            attn = Attention().to(ACCL_DEVICE)
+            if args.compile:
+                attn = torch.compile(attn, backend=multiplatform.compile_backend())
             result = torch.tensor([])
 
             def forward():
@@ -23,7 +34,7 @@ def main(args):
                 query = torch.randn(batch_size, seq_len, d_model, device=ACCL_DEVICE, requires_grad=True)
                 key = torch.randn(batch_size, seq_len, d_model, device=ACCL_DEVICE, requires_grad=True)
                 value = torch.randn(batch_size, seq_len, d_model, device=ACCL_DEVICE, requires_grad=True)
-                result = F.scaled_dot_product_attention(query, key, value)
+                result = attn(query, key, value)
                 accl_module.synchronize()
 
             def backward():
@@ -61,5 +72,8 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch-size", type=int, default=8, help="Batch size for the benchmark")
     parser.add_argument("-n", "--num_steps", type=int, default=100, help="Number of samples for the benchmark")
     parser.add_argument("--num_warmup", type=int, default=10, help="Number of warmup iterations")
+    parser.add_argument(
+        "--compile", action="store_true", help="Whether to use torch.compile to compile the attention module"
+    )
     args = parser.parse_args()
     main(args)
