@@ -13,7 +13,7 @@ def main(args):
         "xl": dict(d_model=1600, d_ff=6400, num_layers=48, num_heads=25),
         "2.7B": dict(d_model=2560, d_ff=10240, num_layers=32, num_heads=32),
     }
-    hyperparams = presets[args.preset]
+    hyperparams = presets[args.model]
 
     if args.output:
         parent = Path(args.output).parent
@@ -21,6 +21,7 @@ def main(args):
 
     for context_length in [128, 256, 512, 1024]:
         path = args.output + f"-context{context_length}.pickle" if args.output else None
+        print(f"context length: {context_length}, {args.n_warmup} warmup, {args.n_step} step:")
         mean, std = cs336_systems.cuda.benchmark(
             dict(**hyperparams, context_length=context_length),
             n_warmup=args.n_warmup,
@@ -28,7 +29,6 @@ def main(args):
             backward=False,
             profile_memory=path,
         )
-        print(f"context length: {context_length}, {args.n_warmup} warmup, {args.n_step} step:")
         print(f"mean: {mean:.6f} sec, std: {std:.6f} sec")
 
 
