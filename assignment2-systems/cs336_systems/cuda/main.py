@@ -15,6 +15,7 @@ def benchmark(
     n_warmup: int = 10,
     n_step: int = 100,
     backward: bool = True,
+    profile_memory: str | None = None,
 ) -> tuple[float, float]:
     model = TransformerModel(**hyperparams, vocab_size=vocab_size).to(ACCL_DEVICE)
     optimizer = optimize.optimizers.AdamW(
@@ -45,7 +46,12 @@ def benchmark(
     for _ in range(n_warmup):
         run()
 
+    if profile_memory is not None:
+        torch.cuda._record_memory_history(max_entries=1000000)
     times = timeit.repeat(run, number=1, repeat=n_step)
+    if profile_memory is not None:
+        torch.cuda.memory._dump_snapshot(profile_memory)
+        torch.cuda._record_memory_history(enabled=None)
     mean = statistics.mean(times)
     std = statistics.stdev(times) if n_step > 1 else 0.0
 
