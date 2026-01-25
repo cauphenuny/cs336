@@ -1,4 +1,6 @@
 import cs336_systems
+from loguru import logger
+import torch
 import argparse
 import pandas as pd
 
@@ -15,27 +17,44 @@ def main(args):
     for name in args.models:
         models[name] = presets[name]
     context_length = args.context_length
+    enable_compile = args.compile
+    dtype = eval(f"torch.{args.dtype}")
 
     def run_benchmark(n_warmup, n_step):
         names, means, stds = [], [], []
         for name, args in models.items():
-            mean, std = cs336_systems.cuda.benchmark(
-                dict(**args, context_length=context_length),
-                n_warmup=n_warmup,
-                n_step=n_step,
-            )
+            try:
+                mean, std = cs336_systems.cuda.benchmark(
+                    dict(**args, context_length=context_length),
+                    n_warmup=n_warmup,
+                    n_step=n_step,
+                    backward=True,
+                    compile=enable_compile,
+                    dtype=dtype,
+                )
+            except Exception as e:
+                logger.error(f"Error benchmarking model {name}: {e}")
+                mean, std = float("nan"), float("nan")
+
             names.append(f"{name}")
             means.append(mean)
             stds.append(std)
-            # mean, std = cs336_systems.cuda.benchmark(
-            #     dict(**args, context_length=context_length),
-            #     n_warmup=n_warmup,
-            #     n_step=n_step,
-            #     backward=False,
-            # )
-            # names.append(f"{name} (forward only)")
-            # means.append(mean)
-            # stds.append(std)
+            try:
+                mean, std = cs336_systems.cuda.benchmark(
+                    dict(**args, context_length=context_length),
+                    n_warmup=n_warmup,
+                    n_step=n_step,
+                    backward=False,
+                    compile=enable_compile,
+                    dtype=dtype,
+                )
+            except Exception as e:
+                logger.error(f"Error benchmarking model {name} (forward only): {e}")
+                mean, std = float("nan"), float("nan")
+
+            names.append(f"{name} (forward only)")
+            means.append(mean)
+            stds.append(std)
         df = pd.DataFrame(
             {
                 "model": names,
@@ -45,7 +64,7 @@ def main(args):
         )
         return df.to_markdown()
 
-    benchmark_sets = [(5, 10), (0, 10), (1, 10), (2, 10)]
+    benchmark_sets = [(2, 10)]
 
     for n_warmup, n_step in benchmark_sets:
         result = run_benchmark(n_warmup, n_step)
@@ -58,5 +77,14 @@ if __name__ == "__main__":
     # NOTE: recommend context_length: 128, 256, 512, 1024
     parser.add_argument("-l", "--context-length", type=int, default=256, help="Context length for the benchmark")
     parser.add_argument("-m", "--models", nargs="+", type=str, required=True, help="Model list for benchmarking")
+    parser.add_argument("--compile", action="store_true", help="Whether to compile the model using torch.compile")
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        default="float32",
+        choices=["float32", "float16", "bfloat16"],
+        help="Data type for the benchmark (float32 or float16 or bfloat16)",
+    )
     args = parser.parse_args()
+    logger.info(f"args: {vars(args)}")
     main(args)

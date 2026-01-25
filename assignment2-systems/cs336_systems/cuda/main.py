@@ -4,7 +4,7 @@ import statistics
 import torch.cuda.nvtx as nvtx
 
 from cs336_basics import network, optimize
-from cs336_basics.network.multiplatform import ACCL_DEVICE, accl_module
+from cs336_basics.network.multiplatform import ACCL_DEVICE, accl_module, compile_backend, ACCL_TYPE
 from cs336_basics.network.models import TransformerModel
 
 
@@ -16,8 +16,13 @@ def benchmark(
     n_step: int = 100,
     backward: bool = True,
     profile_memory: str | None = None,
+    compile: bool = False,
+    dtype: torch.dtype = torch.float32,
 ) -> tuple[float, float]:
     model = TransformerModel(**hyperparams, vocab_size=vocab_size).to(ACCL_DEVICE)
+    if compile:
+        model = torch.compile(model, backend=compile_backend())
+
     optimizer = optimize.optimizers.AdamW(
         model.parameters(),
         lr=1e-3,
@@ -30,17 +35,18 @@ def benchmark(
     output = torch.randint(0, vocab_size, (batch_size, len)).to(ACCL_DEVICE)
 
     def run():
-        with nvtx.range("forward pass"):
-            logits = model(input)
-        if backward:
-            loss = network.functional.cross_entropy(logits, output).mean()
-            with nvtx.range("backward pass"):
-                loss.backward()
-            with nvtx.range("optimize pass"):
-                with nvtx.range("gradient clipping"):
-                    optimize.functional.gradient_clip(model.parameters(), 2.0)
-                with nvtx.range("optimize"):
-                    optimizer.step()
+        with torch.autocast(device_type=ACCL_TYPE, dtype=dtype):
+            with nvtx.range("forward pass"):
+                logits = model(input)
+            if backward:
+                loss = network.functional.cross_entropy(logits, output).mean()
+                with nvtx.range("backward pass"):
+                    loss.backward()
+                with nvtx.range("optimize pass"):
+                    with nvtx.range("gradient clipping"):
+                        optimize.functional.gradient_clip(model.parameters(), 2.0)
+                    with nvtx.range("optimize"):
+                        optimizer.step()
         accl_module.synchronize()
 
     for _ in range(n_warmup):
