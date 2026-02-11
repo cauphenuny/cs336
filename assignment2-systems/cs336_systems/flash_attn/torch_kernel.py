@@ -10,10 +10,12 @@ class FlashAttention(torch.autograd.Function):
     def forward(
         ctx,
         query: Float[torch.Tensor, "batch seq d_model"],
-        key,
-        value,
-        is_casual: bool = False,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        is_causal: bool = False,
     ):
+        if is_causal:
+            raise NotImplementedError("Causal attention is not implemented yet.")
         queries = rearrange(query, "b (l t) d -> l b t d", t=TILE_SIZE)
         keys = rearrange(key, "b (l t) d -> l b t d", t=TILE_SIZE)
         values = rearrange(value, "b (l t) d -> l b t d", t=TILE_SIZE)
