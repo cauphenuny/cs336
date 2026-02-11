@@ -169,6 +169,5 @@ data/
 **/output*
 **/wandb/
 **/models/
-**/uv.lock
 **/.python-version
 **/result*
