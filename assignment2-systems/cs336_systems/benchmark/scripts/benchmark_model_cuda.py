@@ -1,4 +1,4 @@
-import cs336_systems
+from cs336_systems.benchmark.cuda import benchmark
 from loguru import logger
 import torch
 import argparse
@@ -24,7 +24,7 @@ def main(args):
         names, means, stds = [], [], []
         for name, args in models.items():
             try:
-                mean, std = cs336_systems.cuda.benchmark(
+                mean, std = benchmark(
                     dict(**args, context_length=context_length),
                     n_warmup=n_warmup,
                     n_step=n_step,
@@ -40,7 +40,7 @@ def main(args):
             means.append(mean)
             stds.append(std)
             try:
-                mean, std = cs336_systems.cuda.benchmark(
+                mean, std = benchmark(
                     dict(**args, context_length=context_length),
                     n_warmup=n_warmup,
                     n_step=n_step,

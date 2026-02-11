@@ -1,4 +1,4 @@
-import cs336_systems
+from cs336_systems.benchmark import benchmark
 import argparse
 import pandas as pd
 
@@ -16,7 +16,7 @@ def main(args):
     def run_benchmark(n_warmup, n_step):
         models, means, stds = [], [], []
         for name, args in presets.items():
-            mean, std = cs336_systems.benchmark(
+            mean, std = benchmark(
                 dict(**args, context_length=context_length),
                 n_warmup=n_warmup,
                 n_step=n_step,
@@ -24,7 +24,7 @@ def main(args):
             models.append(f"{name} (forward, backward)")
             means.append(mean)
             stds.append(std)
-            mean, std = cs336_systems.benchmark(
+            mean, std = benchmark(
                 dict(**args, context_length=context_length),
                 n_warmup=n_warmup,
                 n_step=n_step,

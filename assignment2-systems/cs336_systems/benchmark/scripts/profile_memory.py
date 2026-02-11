@@ -1,4 +1,4 @@
-import cs336_systems
+from cs336_systems.benchmark.cuda import benchmark
 import os
 import argparse
 import pandas as pd
@@ -22,7 +22,7 @@ def main(args):
     for context_length in [128, 256, 512, 1024]:
         path = args.output + f"-context{context_length}.pickle" if args.output else None
         print(f"context length: {context_length}, {args.n_warmup} warmup, {args.n_step} step:")
-        mean, std = cs336_systems.cuda.benchmark(
+        mean, std = benchmark(
             dict(**hyperparams, context_length=context_length),
             n_warmup=args.n_warmup,
             n_step=args.n_step,
