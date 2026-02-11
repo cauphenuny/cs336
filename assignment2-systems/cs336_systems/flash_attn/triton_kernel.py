@@ -20,8 +20,7 @@ class FlashAttention(torch.autograd.Function):
         value: torch.Tensor,
         is_causal: bool = False,
     ):
-        if is_causal:
-            raise NotImplementedError("Causal attention is not implemented for the Triton kernel.")
+        ctx.is_causal = is_causal
 
         batch_size, seq_len, d_model = query.shape
         if key.shape != (batch_size, seq_len, d_model) or value.shape != (batch_size, seq_len, d_model):
@@ -49,6 +48,7 @@ class FlashAttention(torch.autograd.Function):
             D_MODEL=d_model,
             Q_TILE_SIZE=TILE_SIZE,
             K_TILE_SIZE=TILE_SIZE,
+            IS_CAUSAL=is_causal,
         )
 
         ctx.save_for_backward(logsumexp, query, key, value, output)
@@ -73,6 +73,7 @@ def flash_fwd_kernel(
     D_MODEL: constexpr,
     Q_TILE_SIZE: constexpr,
     K_TILE_SIZE: constexpr,
+    IS_CAUSAL: constexpr,
 ):
     query_tile_index = tl.program_id(0)
     batch_index = tl.program_id(1)
@@ -124,12 +125,20 @@ def flash_fwd_kernel(
     max_score = tl.full((Q_TILE_SIZE, 1), float("-inf"), dtype=tl.float32)
     sum_prob = tl.zeros((Q_TILE_SIZE, 1), dtype=tl.float32)
 
-    for _ in range(tl.cdiv(num_keys, K_TILE_SIZE)):
+    q_offsets = query_tile_index * Q_TILE_SIZE + tl.arange(0, Q_TILE_SIZE)
+
+    for k_tile_index in range(tl.cdiv(num_keys, K_TILE_SIZE)):
         key_tile = tl.load(key_block_ptr)
         value_tile = tl.load(value_block_ptr)
 
         score = tl.dot(query, tl.trans(key_tile)) # (q, d) @ (d, k) -> (q, k)
         score = score * scale
+
+        if IS_CAUSAL:
+            k_offsets = k_tile_index * K_TILE_SIZE + tl.arange(0, K_TILE_SIZE)
+            causal_mask = q_offsets[:, None] >= k_offsets[None, :]
+            score = tl.where(causal_mask, score, -1.0e6)
+
         prev_max_score = max_score
         max_score = tl.maximum(max_score, tl.max(score, axis=1, keep_dims=True))
         weight = tl.exp(prev_max_score - max_score)
