@@ -2,6 +2,12 @@ import torch
 import triton
 import triton.language as tl
 from jaxtyping import Float
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    constexpr = int
+else:
+    constexpr = tl.constexpr
 
 TILE_SIZE = 16
 
@@ -14,16 +20,36 @@ class FlashAttention(torch.autograd.Function):
         value: torch.Tensor,
         is_causal: bool = False,
     ):
+        if is_causal:
+            raise NotImplementedError("Causal attention is not implemented for the Triton kernel.")
+
         batch_size, seq_len, d_model = query.shape
+        if key.shape != (batch_size, seq_len, d_model) or value.shape != (batch_size, seq_len, d_model):
+            raise ValueError("Expected key/value to have the same shape as query (batch, seq, d_model).")
+
         output = torch.empty_like(query)
-        logsumexp = torch.empty((batch_size, seq_len), device=query.device)
+        logsumexp = torch.empty((batch_size, seq_len), device=query.device, dtype=torch.float32)
 
         if seq_len % TILE_SIZE != 0:
             raise ValueError(f"Sequence length must be a multiple of {TILE_SIZE} for the Triton kernel.")
 
         # Launch the Triton kernel
         grid = (seq_len // TILE_SIZE, batch_size)
-        # flash_fwd_kernel[grid](query, key, value, output, logsumexp, seq_len, d_model)
+        scale = 1.0 / (d_model**0.5)
+        flash_fwd_kernel[grid](
+            query, key, value,
+            output, logsumexp,
+            query.stride(0), query.stride(1), query.stride(2),
+            key.stride(0), key.stride(1), key.stride(2),
+            value.stride(0), value.stride(1), value.stride(2),
+            output.stride(0), output.stride(1), output.stride(2),
+            logsumexp.stride(0), logsumexp.stride(1),
+            seq_len, seq_len,
+            scale,
+            D_MODEL=d_model,
+            Q_TILE_SIZE=TILE_SIZE,
+            K_TILE_SIZE=TILE_SIZE,
+        )
 
         ctx.save_for_backward(logsumexp, query, key, value, output)
         return output
@@ -44,9 +70,9 @@ def flash_fwd_kernel(
     stride_lb, stride_lq,
     num_queries, num_keys,
     scale,
-    D_MODEL: tl.constexpr,
-    Q_TILE_SIZE: tl.constexpr,
-    K_TILE_SIZE: tl.constexpr,
+    D_MODEL: constexpr,
+    Q_TILE_SIZE: constexpr,
+    K_TILE_SIZE: constexpr,
 ):
     query_tile_index = tl.program_id(0)
     batch_index = tl.program_id(1)
@@ -98,18 +124,18 @@ def flash_fwd_kernel(
     max_score = tl.full((Q_TILE_SIZE, 1), float("-inf"), dtype=tl.float32)
     sum_prob = tl.zeros((Q_TILE_SIZE, 1), dtype=tl.float32)
 
-    for i in range(tl.cdiv(D_MODEL, K_TILE_SIZE)):
+    for _ in range(tl.cdiv(num_keys, K_TILE_SIZE)):
         key_tile = tl.load(key_block_ptr)
         value_tile = tl.load(value_block_ptr)
 
         score = tl.dot(query, tl.trans(key_tile)) # (q, d) @ (d, k) -> (q, k)
         score = score * scale
         prev_max_score = max_score
-        max_score = tl.maximum(max_score, tl.max(score, axis=1, keepdims=True))
+        max_score = tl.maximum(max_score, tl.max(score, axis=1, keep_dims=True))
         weight = tl.exp(prev_max_score - max_score)
         prob = tl.exp(score - max_score)
-        sum_prob = weight * sum_prob + tl.sum(prob, axis=1, keepdims=True)
-        output = weight * output + tl.dot(prob.to(value_tile.dtype), value_tile).to(output.dtype)
+        sum_prob = weight * sum_prob + tl.sum(prob, axis=1, keep_dims=True)
+        output = weight * output + tl.dot(prob.to(tl.float32), value_tile.to(tl.float32))
 
         key_block_ptr = key_block_ptr.advance((K_TILE_SIZE, 0))
         value_block_ptr = value_block_ptr.advance((K_TILE_SIZE, 0))
@@ -117,8 +143,8 @@ def flash_fwd_kernel(
     output = output / sum_prob
     logsumexp = max_score + tl.log(sum_prob)
     
-    output = output.to(output_block_ptr.dtype)
-    logsumexp = logsumexp.to(logsumexp_block_ptr.dtype)
+    output = output.to(output_block_ptr.dtype.element_ty)
+    logsumexp = logsumexp.to(logsumexp_block_ptr.dtype.element_ty)
 
     tl.store(output_block_ptr, output)
-    tl.store(logsumexp_block_ptr, tl.squeeze(logsumexp, axis=1))
+    tl.store(logsumexp_block_ptr, tl.view(logsumexp, (Q_TILE_SIZE,)))
