@@ -3,6 +3,7 @@ import triton
 import triton.language as tl
 from jaxtyping import Float
 from typing import TYPE_CHECKING
+from .backward import get_backward_impl
 
 if TYPE_CHECKING:
     constexpr = int
@@ -56,7 +57,11 @@ class FlashAttention(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        raise NotImplementedError("Backward pass is not implemented for FlashAttention.")
+        logsumexp, query, key, value, output = ctx.saved_tensors
+        is_causal = ctx.is_causal
+        return get_backward_impl()(
+            grad_output, logsumexp, query, key, value, output, is_causal
+        )
 
 
 @triton.jit

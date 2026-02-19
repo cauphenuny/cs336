@@ -2,6 +2,7 @@ from typing import Callable
 import torch
 from einops import rearrange, einsum
 from jaxtyping import Float
+from .backward import get_backward_impl
 
 TILE_SIZE = 16
 
@@ -62,33 +63,9 @@ class FlashAttention(torch.autograd.Function):
     def backward(ctx, grad_output):
         logsumexp, query, key, value, output = ctx.saved_tensors
         is_causal = ctx.is_causal
-        return FlashAttention.get_backward_impl()(
+        return get_backward_impl()(
             grad_output, logsumexp, query, key, value, output, is_causal
         )
-
-    @staticmethod
-    def _backward_impl(grad_output, logsumexp, query, key, value, output, is_causal):
-        if is_causal:
-            raise NotImplementedError("Backward pass for causal attention is not implemented yet.")
-
-        dim = query.shape[-1]
-        score = einsum(query, key, "b q d, b k d -> b q k") / (dim ** 0.5)
-        prob = torch.exp(score - rearrange(logsumexp, "b q -> b q 1")) # b q k, grad_output: b q d
-        rowsum = torch.sum(output * grad_output, dim=-1, keepdim=True) # rowsum(o * do) = rowsum(p * dp)
-        grad_v = prob.mT @ grad_output
-        grad_p = grad_output @ value.mT
-        grad_s = prob * (grad_p - rowsum)
-        grad_q = (grad_s @ key) / (dim ** 0.5)
-        grad_k = (grad_s.mT @ query) / (dim ** 0.5)
-        return grad_q, grad_k, grad_v, None
-
-    @staticmethod
-    def get_backward_impl():
-        if FlashAttention.compiled_backward_func is None:
-            FlashAttention.compiled_backward_func = torch.compile(FlashAttention._backward_impl)
-        return FlashAttention.compiled_backward_func
-
-    compiled_backward_func: Callable | None = None
 
 
 f_flashattn = FlashAttention.apply
