@@ -2,6 +2,7 @@ import torch
 from einops import rearrange, einsum
 from jaxtyping import Float
 from typing import Callable
+from loguru import logger
 
 def _backward_impl(grad_output, logsumexp, query, key, value, output, is_causal):
     dim = query.shape[-1]
@@ -24,10 +25,8 @@ def _backward_impl(grad_output, logsumexp, query, key, value, output, is_causal)
     grad_k = (grad_s.mT @ query) / (dim ** 0.5)
     return grad_q, grad_k, grad_v, None
 
-compiled_backward_func: Callable | None = None
-
-def get_backward_impl():
-    global compiled_backward_func
-    if compiled_backward_func is None:
-        compiled_backward_func = torch.compile(_backward_impl)
-    return compiled_backward_func
+try:
+    f_backward = torch.compile(_backward_impl)
+except Exception as e:
+    logger.error(f"Compilation failed with error: {e}")
+    f_backward = _backward_impl

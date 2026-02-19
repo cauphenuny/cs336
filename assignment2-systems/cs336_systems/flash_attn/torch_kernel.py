@@ -2,7 +2,7 @@ from typing import Callable
 import torch
 from einops import rearrange, einsum
 from jaxtyping import Float
-from .backward import get_backward_impl
+from .backward import f_backward
 
 TILE_SIZE = 16
 
@@ -63,9 +63,7 @@ class FlashAttention(torch.autograd.Function):
     def backward(ctx, grad_output):
         logsumexp, query, key, value, output = ctx.saved_tensors
         is_causal = ctx.is_causal
-        return get_backward_impl()(
-            grad_output, logsumexp, query, key, value, output, is_causal
-        )
+        return f_backward(grad_output, logsumexp, query, key, value, output, is_causal)
 
 
 f_flashattn = FlashAttention.apply
