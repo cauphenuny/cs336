@@ -14,8 +14,6 @@ class FlashAttention(torch.autograd.Function):
         value: torch.Tensor,
         is_causal: bool = False,
     ):
-        if is_causal:
-            raise NotImplementedError("Causal attention is not implemented yet.")
         queries = rearrange(query, "b (l t) d -> l b t d", t=TILE_SIZE)
         keys = rearrange(key, "b (l t) d -> l b t d", t=TILE_SIZE)
         values = rearrange(value, "b (l t) d -> l b t d", t=TILE_SIZE)
@@ -23,17 +21,24 @@ class FlashAttention(torch.autograd.Function):
         outputs = []
         logsumexps = []
 
-        for q in queries:
+        for qid, q in enumerate(queries):
             output = torch.zeros_like(q)  # b t d
             max_score = torch.full((batch_size, tile_size, 1), float("-inf"), device=q.device)
             sum_prob = torch.zeros((batch_size, tile_size, 1), device=q.device)
+            q_offsets = qid * tile_size + torch.arange(tile_size, device=q.device)
 
-            for k, v in zip(keys, values):
+            for kid, (k, v) in enumerate(zip(keys, values)):
                 score: Float[torch.Tensor, "b t t"] = einsum(
                     q,
                     k,
                     "b tq d, b tk d -> b tq tk",
                 ) / (dim**0.5)
+
+                if is_causal:
+                    k_offsets = kid * tile_size + torch.arange(tile_size, device=q.device)
+                    mask = q_offsets[:, None] >= k_offsets[None, :]
+                    score = torch.where(mask, score, -1.0e6)
+
                 prev_max_score = max_score
                 max_score = torch.maximum(max_score, torch.max(score, dim=-1, keepdim=True).values)
                 weight = torch.exp(prev_max_score - max_score)
