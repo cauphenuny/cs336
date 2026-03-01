@@ -62,6 +62,7 @@ class FlashAttention(torch.autograd.Function):
         return f_backward(grad_output, logsumexp, query, key, value, output, is_causal)
 
 
+#pragma parallel (thread_block)
 @triton.jit
 def flash_fwd_kernel(
     query_ptr, key_ptr, value_ptr,
@@ -130,6 +131,7 @@ def flash_fwd_kernel(
 
     q_offsets = query_tile_index * Q_TILE_SIZE + tl.arange(0, Q_TILE_SIZE)
 
+    #pragma parallel for(warp)
     for k_tile_index in range(tl.cdiv(num_keys, K_TILE_SIZE)):
         key_tile = tl.load(key_block_ptr)
         value_tile = tl.load(value_block_ptr)
@@ -159,6 +161,6 @@ def flash_fwd_kernel(
     logsumexp = logsumexp.to(logsumexp_block_ptr.dtype.element_ty)
 
     tl.store(output_block_ptr, output)
-    tl.store(logsumexp_block_ptr, tl.view(logsumexp, (Q_TILE_SIZE,)))
+    tl.store(logsumexp_block_ptr, tl.reshape(logsumexp, (Q_TILE_SIZE,)))
 
 f_flashattn = FlashAttention.apply

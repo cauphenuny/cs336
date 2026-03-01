@@ -78,9 +78,11 @@ def _pick_tile_size(seq_len: int, d_model: int) -> int:
 	"""
 
 	if seq_len >= 16384:
-		return 128
+		# return 128
+		return 32
 	if seq_len >= 4096:
-		return 64
+		# return 64
+		return 32
 	if seq_len >= 1024:
 		return 32
 	return 16
