@@ -31,7 +31,7 @@ class SGD(torch.optim.Optimizer):
 
 
 class AdamW(torch.optim.Optimizer):
-    def __init__(self, params, lr: float, betas: tuple[float, float], eps: float, weight_decay: float):
+    def __init__(self, params, lr: float, betas: tuple[float, float] = (0.9, 0.999), eps: float = 1e-8, weight_decay: float = 0.0):
         defaults = {"lr": lr, "betas": betas, "eps": eps, "weight_decay": weight_decay}
         super().__init__(params, defaults)
 
