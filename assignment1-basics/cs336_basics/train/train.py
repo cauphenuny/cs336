@@ -2,7 +2,6 @@ import argparse
 import os
 import sys
 from loguru import logger
-import wandb
 from jaxtyping import Float
 import torch
 import numpy as np
@@ -18,6 +17,7 @@ from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend
 from ..network import functional
 from .dataset import TextDataLoader, TorchTextDataLoader
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
+from ..distributed.utils import is_distributed, is_main_process
 
 parser = argparse.ArgumentParser()
 
@@ -46,6 +46,8 @@ parser.add_argument("--d_ff", type=int)
 parser.add_argument("--rope_theta", type=float, default=10000.0)
 parser.add_argument("--num_heads", type=int, default=16)
 parser.add_argument("--num_layers", type=int, default=4)
+
+parser.add_argument("--enable-wandb", action="store_true", default=False)
 
 
 def convert_to_bool(value: str) -> bool:
@@ -107,11 +109,18 @@ def main():
     if args.model_preset is not None:
         load_preset(args.model_preset)
         args = parser.parse_args()
+    main_process = is_main_process()
     logger.info(f"Arguments: {vars(args)}")
     device = ACCL_DEVICE
     logger.info(f"Train on: {device}")
 
-    wandb.login(key=os.environ["WANDB_API_KEY"])
+    if args.enable_wandb and main_process:
+        import wandb
+    else:
+        wandb = None
+
+    if wandb:
+        wandb.login(key=os.environ["WANDB_API_KEY"])
     model_args = dict(
         vocab_size=args.vocab_size,
         context_length=args.context_length,
@@ -185,25 +194,29 @@ def main():
         else:
             logger.error(f"Checkpoint file {args.resume} does not exist.")
 
-    run = wandb.init(
-        project=args.project,
-        name=args.name,
-        config=vars(args),
-        id=run_id,
-        resume="allow",
-    )
-
-    train_path = os.path.join(args.output, args.name + f"-{run.id}")
-    os.makedirs(train_path, exist_ok=True)
-    checkpoint_path = os.path.join(train_path, "checkpoint.pt")
-    best_model_path = os.path.join(train_path, "best_model.pt")
-    trace_path = os.path.join(train_path, "trace")
+    if main_process:
+        if wandb:
+            run = wandb.init(
+                project=args.project,
+                name=args.name,
+                config=vars(args),
+                id=run_id,
+                resume="allow",
+            )
+            mark = run.id
+        else:
+            mark = "anonymous"
+        train_path = os.path.join(args.output, args.name + f"-{mark}")
+        os.makedirs(train_path, exist_ok=True)
+        checkpoint_path = os.path.join(train_path, "checkpoint.pt")
+        best_model_path = os.path.join(train_path, "best_model.pt")
+        trace_path = os.path.join(train_path, "trace") if main_process else None
 
     def validate():
         nonlocal best_loss, best_perplexity
         model.eval()
         with torch.no_grad():
-            with tqdm(val_loader, desc="Validation") as pbar:
+            with tqdm(val_loader, desc="Validation", disable=not main_process) as pbar:
                 vlosses = []
                 vperps = []
                 for input, target in pbar:
@@ -216,54 +229,42 @@ def main():
                     vloss = float(np.mean(vlosses))
                     vperp = float(np.mean(vperps))
                     pbar.set_postfix(v_loss=f"{vloss:.3f}", v_perplexity=f"{vperp:.3f}")
-            wandb.log(
-                {"val_loss": vloss, "val_perplexity": vperp},
-                step=step,
-            )
-            outputs = [checkpoint_path]
-            if vloss < best_loss:
-                best_loss = vloss
-                best_perplexity = vperp
-                save_model(
-                    best_model_path,
-                    model=model,
+            if main_process:
+                if wandb:
+                    wandb.log(
+                        {"val_loss": vloss, "val_perplexity": vperp},
+                        step=step,
+                    )
+                outputs = [checkpoint_path]
+                info: dict = dict(
                     iter=step + 1,
                     model_args=model_args,
-                    run_id=run.id,
+                    run_id=run.id if run is not None else None,
                     best_loss=best_loss,
                     best_perplexity=best_perplexity,
                     loss=vloss,
                     perplexity=vperp,
                     train_tokens=(step + 1) * args.batch_size * args.context_length,
                 )
-                outputs.append(best_model_path)
-            save_checkpoint(
-                checkpoint_path,
-                model=model,
-                optimizer=optimizer,
-                iter=step,
-                model_args=model_args,
-                run_id=run.id,
-                best_loss=best_loss,
-                best_perplexity=best_perplexity,
-                loss=vloss,
-                perplexity=vperp,
-                train_tokens=(step + 1) * args.batch_size * args.context_length,
-            )
-            print("\r\033[K", file=sys.stderr, end="")  # clear line
-            logger.info(
-                f"Saved checkpoint to {', '.join(outputs)}. loss: {vloss:.3f}/{best_loss:.3f}, perplexity: {vperp:.3f}/{best_perplexity:.3f}"
-            )
+                if vloss < best_loss:
+                    best_loss = vloss
+                    best_perplexity = vperp
+                    save_model(best_model_path, model=model, **info)
+                    outputs.append(best_model_path)
+                save_checkpoint(checkpoint_path, model=model, optimizer=optimizer, **info)
+                logger.info(
+                    f"Saved checkpoint to {', '.join(outputs)}. loss: {vloss:.3f}/{best_loss:.3f}, perplexity: {vperp:.3f}/{best_perplexity:.3f}"
+                )
         model.train()
         return vloss, vperp
 
     if args.compile:
         model.compile(backend=compile_backend())
 
-    with profile(enable=args.profile, json_trace_file=trace_path if args.profile else None) as prof:
+    with profile(enable=args.profile and main_process, json_trace_file=trace_path if args.profile else None) as prof:
         try:
             epoch_cnt = 0
-            with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step") as pbar:
+            with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step", disable=not main_process) as pbar:
                 train_loss = float("nan")
                 grad = float("nan")
                 for step, (input, target) in enumerate(pbar, start=start_iter):
@@ -278,10 +279,11 @@ def main():
                     if step % args.log_interval == 0:
                         grad = optimize.functional.gradient_norm(model.parameters()).cpu()
                         train_loss = loss.cpu()
-                        wandb.log(
-                            {"train_loss": train_loss, "grad": grad, "lr": current_lr},
-                            step=step,
-                        )
+                        if wandb:
+                            wandb.log(
+                                {"train_loss": train_loss, "grad": grad, "lr": current_lr},
+                                step=step,
+                            )
                         pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
                     optimizer.step()
                     pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
@@ -291,10 +293,12 @@ def main():
                         validate()
                         epoch_cnt += 1
                         if args.max_epoch and epoch_cnt >= args.max_epoch:
-                            logger.info(f"Reached max epoch {args.max_epoch}, stopping training.")
+                            if main_process:
+                                logger.info(f"Reached max epoch {args.max_epoch}, stopping training.")
                             break
         except KeyboardInterrupt:
-            logger.warning("Training interrupted by user.")
+            if main_process:
+                logger.warning("Training interrupted by user.")
         else:
             validate()
 
