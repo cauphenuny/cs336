@@ -9,18 +9,30 @@ def sync(grad):
     return grad
 
 class DDP(torch.nn.Module):
-    def __init__(self, module: torch.nn.Module):
+    def __init__(self, module: torch.nn.Module, register: bool = True):
         super().__init__()
         self.module = module
+        self.sync_parameters()
+        if register:
+            self.register_hook()
+
+    def register_hook(self, hook=lambda x: sync(x)):
         for p in self.module.parameters():
-            if is_distributed():
-                dist.broadcast(p, src=0)
-            if not p.requires_grad:
-                continue
-            p.register_hook(lambda x: sync(x))
+            if p.requires_grad:
+                p.register_hook(hook)
 
     def forward(self, *args, **kwargs):
         return self.module(*args, **kwargs)
+
+    def sync_parameters(self):
+        for p in self.module.parameters():
+            if is_distributed():
+                dist.broadcast(p, src=0)
+
+    def sync_gradients(self):
+        for p in self.module.parameters():
+            if p.grad is not None:
+                sync(p.grad)
 
 class DistributedSampler(torch.utils.data.Sampler):
     def __init__(self, dataset: torch.utils.data.Dataset, shuffle: bool = True, drop_last: bool = False):

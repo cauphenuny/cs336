@@ -33,7 +33,7 @@ def main(rank: int, world_size: int, batch_size: int, device: str):
         nn.ReLU(),
         nn.Linear(10, 10),
     ).to(device)
-    ddp_model = DDP(model).to(device)
+    ddp_model = DDP(model, register=False).to(device)
     dataset = SimpleDataset(1000)
     sampler = DistributedSampler(dataset)
     dataloader = torch.utils.data.DataLoader(
@@ -55,6 +55,7 @@ def main(rank: int, world_size: int, batch_size: int, device: str):
             loss = ((preds.sum(dim=1) - labels) ** 2).mean()
             optimizer.zero_grad()
             loss.backward()
+            ddp_model.sync_gradients()
             optimizer.step()
             avg_loss += loss * data.size(0)
             count += data.size(0)
