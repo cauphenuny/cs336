@@ -4,6 +4,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from typing import Literal
 from . import functional
+from torch.profiler import record_function
 
 
 class Module(torch.nn.Module):
@@ -284,30 +285,40 @@ class MultiheadSelfAttention(Module):
         x: Float[Tensor, " ... seq_len d_model"],
         token_positions: Int[Tensor, " ... seq_len"] | None = None,
     ):
-        q = self.q_proj(x)
-        k = self.k_proj(x)
-        v = self.v_proj(x)
-        q, k, v = (
-            einops.rearrange(
-                tensor,
-                "... len (num_heads head_dim) -> ... num_heads len head_dim",
-                num_heads=self.num_heads,
-                head_dim=self.head_dim,
+        with record_function("qkv_proj"):
+            q = self.q_proj(x)
+            k = self.k_proj(x)
+            v = self.v_proj(x)
+            q, k, v = (
+                einops.rearrange(
+                    tensor,
+                    "... len (num_heads head_dim) -> ... num_heads len head_dim",
+                    num_heads=self.num_heads,
+                    head_dim=self.head_dim,
+                )
+                for tensor in (q, k, v)
             )
-            for tensor in (q, k, v)
-        )
+
         if self.rope:
-            q = self.rope(q, token_positions)
-            k = self.rope(k, token_positions)
+            with record_function("rope"):
+                q = self.rope(q, token_positions)
+                k = self.rope(k, token_positions)
+
         if self.casual:
             seq_len = x.shape[-2]
             mask = torch.arange(seq_len, device=self.device).reshape(-1, 1) >= torch.arange(seq_len, device=self.device)
         else:
             mask = None
-        attn_output = functional.scaled_dot_product_attention(q, k, v, mask=mask)
-        attn_output = einops.rearrange(
-            attn_output,
-            "... num_heads len dim -> ... len (num_heads dim)",
-            num_heads=self.num_heads,
-        )
-        return self.output_proj(attn_output)
+
+        with record_function("sdpa"):
+            attn_output = functional.scaled_dot_product_attention(q, k, v, mask=mask)
+            attn_output = einops.rearrange(
+                attn_output,
+                "... num_heads len dim -> ... len (num_heads dim)",
+                num_heads=self.num_heads,
+            )
+
+        with record_function("o_proj"):
+            attn_output = self.output_proj(attn_output)
+        
+        return attn_output

@@ -11,6 +11,7 @@ from torch import Tensor
 from tqdm import tqdm
 from typing import Literal
 from datetime import datetime
+from torch.profiler import record_function
 
 from ..network.models import TransformerModel, specifications
 from .. import optimize
@@ -55,6 +56,7 @@ parser.add_argument("--enable-wandb", action="store_true", default=False)
 parser.add_argument("--master_port", type=int, default=12355)
 parser.add_argument("--master_addr", type=str, default="localhost")
 parser.add_argument("--world_size", type=int, default=accl_module.device_count())
+parser.add_argument("--without_ddp_hook", action="store_true", default=False)
 
 
 def convert_to_bool(value: str) -> bool:
@@ -149,7 +151,7 @@ def main(rank: int, args):
         ffn_activate="swiglu" if not args.use_silu else "silu",
     )
     model = TransformerModel(**model_args)
-    model = DDP(model, register=True)
+    model = DDP(model, register=not args.without_ddp_hook)
 
     optimizer = AdamW(
         model.parameters(),
@@ -228,7 +230,9 @@ def main(rank: int, args):
             )
             mark = run.id
         else:
+            run = None
             mark = datetime.now().strftime("%Y%m%d-%H%M%S")
+
         train_path = os.path.join(args.output, args.name + f"-{mark}")
         os.makedirs(train_path, exist_ok=True)
         checkpoint_path = os.path.join(train_path, "checkpoint.pt")
@@ -293,12 +297,25 @@ def main(rank: int, args):
                 for step, (input, target) in enumerate(pbar, start=start_iter):
                     current_lr = lr_scheduler.update(step)
                     optimizer.zero_grad()
+
                     # logger.debug(f"Train Step {step}: {input.shape = }, {target.shape = }, {input.dtype = }")
-                    input, target = input.to(device), target.to(device)
-                    output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
-                    loss = functional.cross_entropy(output_logits, target).mean()
-                    loss.backward()
-                    optimize.functional.gradient_clip(model.parameters(), 2.0)
+                    with record_function("forward"):
+                        input, target = input.to(device), target.to(device)
+                        output_logits: Float[Tensor, " ... batch len vocab_size"] = model(input)
+                        loss = functional.cross_entropy(output_logits, target).mean()
+
+                    with record_function("backward"):
+                        loss.backward()
+                        model.sync_gradients()
+
+                    with record_function("optimize"):
+                        optimize.functional.gradient_clip(model.parameters(), 2.0)
+                        optimizer.step()
+
+                    if prof:
+                        prof.step()
+
+                    pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
                     if step % args.log_interval == 0:
                         grad = optimize.functional.gradient_norm(model.parameters()).cpu()
                         train_loss = loss.cpu()
@@ -308,10 +325,7 @@ def main(rank: int, args):
                                 step=step,
                             )
                         pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
-                    optimizer.step()
-                    pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
-                    if prof:
-                        prof.step()
+
                     if (step + 1) % args.val_interval == 0:
                         validate()
                         epoch_cnt += 1
@@ -319,6 +333,7 @@ def main(rank: int, args):
                             if main_process:
                                 logger.info(f"Reached max epoch {args.max_epoch}, stopping training.")
                             break
+
         except KeyboardInterrupt:
             if main_process:
                 logger.warning("Training interrupted by user.")
