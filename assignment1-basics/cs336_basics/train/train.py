@@ -1,3 +1,5 @@
+from .. import prelude
+
 import argparse
 import os
 import sys
@@ -8,12 +10,13 @@ import numpy as np
 from torch import Tensor
 from tqdm import tqdm
 from typing import Literal
+from datetime import datetime
 
 from ..network.models import TransformerModel, specifications
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
-from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend, ACCL_BACKEND
+from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend, ACCL_BACKEND, accl_module
 from ..network import functional
 from .dataset import TextDataLoader, TorchTextDataLoader, RandomWindowDataset
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
@@ -51,7 +54,7 @@ parser.add_argument("--num_layers", type=int, default=4)
 parser.add_argument("--enable-wandb", action="store_true", default=False)
 parser.add_argument("--master_port", type=int, default=12355)
 parser.add_argument("--master_addr", type=str, default="localhost")
-parser.add_argument("--world_size", type=int, default=1)
+parser.add_argument("--world_size", type=int, default=accl_module.device_count())
 
 
 def convert_to_bool(value: str) -> bool:
@@ -108,10 +111,15 @@ def load_preset(
             parser.set_defaults(**{k: v})
 
 
-def main(rank: int, world_size: int, args):
-    os.environ["MASTER_ADDR"] = args.master_addr
-    os.environ["MASTER_PORT"] = str(args.master_port)
-    torch.distributed.init_process_group(ACCL_BACKEND, rank=rank, world_size=world_size)
+def main(rank: int, args):
+    # Preserve any MASTER_ADDR/MASTER_PORT provided by an external launcher
+    # such as torchrun. Only set from args when not already present.
+    if "MASTER_ADDR" not in os.environ:
+        os.environ["MASTER_ADDR"] = args.master_addr
+    if "MASTER_PORT" not in os.environ:
+        os.environ["MASTER_PORT"] = str(args.master_port)
+    logger.info(f"Initializing process group (backend: {ACCL_BACKEND}, rank: {rank}, world_size: {args.world_size})...")
+    torch.distributed.init_process_group(ACCL_BACKEND, rank=rank, world_size=args.world_size)
 
     main_process = is_main_process()
     logger.info(f"Arguments: {vars(args)}")
@@ -220,12 +228,12 @@ def main(rank: int, world_size: int, args):
             )
             mark = run.id
         else:
-            mark = "anonymous"
+            mark = datetime.now().strftime("%Y%m%d-%H%M%S")
         train_path = os.path.join(args.output, args.name + f"-{mark}")
         os.makedirs(train_path, exist_ok=True)
         checkpoint_path = os.path.join(train_path, "checkpoint.pt")
         best_model_path = os.path.join(train_path, "best_model.pt")
-        trace_path = os.path.join(train_path, "trace") if main_process else None
+        trace_path = os.path.join(train_path, "trace.json") if main_process else None
 
     def validate():
         nonlocal best_loss, best_perplexity
@@ -276,7 +284,7 @@ def main(rank: int, world_size: int, args):
     if args.compile:
         model.compile(backend=compile_backend())
 
-    with profile(enable=args.profile and main_process, json_trace_file=trace_path if args.profile else None) as prof:
+    with profile(enable=args.profile and main_process, json_trace_file=trace_path if args.profile and main_process else None) as prof:
         try:
             epoch_cnt = 0
             with tqdm(train_loader, initial=start_iter, total=len(train_loader), desc="Training", unit="step", disable=not main_process) as pbar:
@@ -324,5 +332,24 @@ if __name__ == "__main__":
         load_preset(args.model_preset)
         args = parser.parse_args()
 
-    world_size = args.world_size
-    torch.multiprocessing.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
+    # If launched with torchrun / torch.distributed.run, the launcher provides
+    # RANK, LOCAL_RANK and WORLD_SIZE environment variables. Detect that and
+    # call `main` directly in each process. Otherwise fall back to the
+    # original multiprocessing.spawn behavior for backwards compatibility.
+    rank_env = os.environ.get("RANK")
+    world_size_env = os.environ.get("WORLD_SIZE")
+    local_rank_env = os.environ.get("LOCAL_RANK")
+
+    if rank_env is not None and world_size_env is not None:
+        rank = int(rank_env)
+        args.world_size = int(world_size_env)
+        # If a local rank is provided, set CUDA device accordingly when CUDA is available.
+        if local_rank_env is not None and torch.cuda.is_available():
+            try:
+                torch.cuda.set_device(int(local_rank_env))
+            except Exception:
+                pass
+        main(rank, args)
+    else:
+        # Legacy behavior: spawn processes in-process
+        torch.multiprocessing.spawn(main, args=(args,), nprocs=args.world_size, join=True)
