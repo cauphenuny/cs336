@@ -68,9 +68,9 @@ ACCL_ACTIVITY = accl_activity()
 
 
 def compile_backend():
-    if ACCL_TYPE == "mps":
-        return "aot_eager"
-    return "inductor"
+    if ACCL_TYPE == "cuda":
+        return "inductor"
+    return "aot_eager"
 
 
 @contextmanager
@@ -111,13 +111,17 @@ def profile(
 
     logger.info("Profiling with activities: {}", activities)
 
+    def chrome_trace_handler(p):
+        if json_trace_file:
+            p.export_chrome_trace(json_trace_file)
+
     with torch.profiler.profile(
         activities=activities,
-        schedule=torch.profiler.schedule(wait=1, warmup=3, active=10, repeat=3),
+        schedule=torch.profiler.schedule(wait=1, warmup=3, active=10, repeat=1),
         record_shapes=record_shapes,
         with_stack=with_stack,
         profile_memory=profile_memory,
-        on_trace_ready=(torch.profiler.tensorboard_trace_handler(json_trace_file) if json_trace_file else None),
+        on_trace_ready=chrome_trace_handler if json_trace_file else None,
     ) as prof:
         yield prof
         for sort_by in sort_bys:
@@ -130,5 +134,9 @@ def device_memory_usage():
         return torch.cuda.memory_allocated()
     elif ACCL_TYPE == "mps":
         return torch.mps.current_allocated_memory()
+    elif ACCL_TYPE == "npu":
+        import torch_npu  # pyright: ignore
+
+        return torch_npu.npu.memory_allocated()  # pyright: ignore
     else:
-        raise NotImplementedError("device_memory_usage is only implemented for CUDA and MPS backends")
+        raise NotImplementedError("device_memory_usage is only implemented for CUDA, MPS, and NPU backends")

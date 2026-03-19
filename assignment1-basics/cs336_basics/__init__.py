@@ -2,7 +2,7 @@ import importlib.metadata
 
 __version__ = importlib.metadata.version("cs336_basics")
 
-from .prelude import npu
+from . import prelude
 
 from . import cpp_extensions  # type: ignore
 from . import tokenize
@@ -18,4 +18,5 @@ __all__ = [
     "network",
     "optimize",
     "train",
+    "prelude",
 ]
