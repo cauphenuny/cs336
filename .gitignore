@@ -169,7 +169,6 @@ data/
 **/output*
 **/wandb/
 **/models/
-**/.python-version
 **/result*
 
 **ascend_pt/
