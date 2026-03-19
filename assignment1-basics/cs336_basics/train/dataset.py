@@ -186,15 +186,17 @@ class TorchTextDataLoader:
 
     def __init__(
         self,
-        path: str,
         context_length: int,
         batch_size: int,
         limit: int,
+        dataset: RandomWindowDataset | None = None,
+        path: str | None = None,
         limit_type: Literal["total_tokens", "train_steps"] = "total_tokens",
         vocab_size: int | None = None,
         device: torch.device | str | None = None,
         num_workers: int = 0,
-        seed: int | None = 42,
+        seed: int | None = None,
+        sampler: torch.utils.data.Sampler | None = None,
         pin_memory: bool = True,
         persistent_workers: bool = False,
         prefetch_factor: int | None = None,
@@ -215,16 +217,24 @@ class TorchTextDataLoader:
         if self.max_iter <= 0:
             raise ValueError("Computed max_iter <= 0. Adjust limit / batch_size / context_length.")
 
-        self.dataset = RandomWindowDataset(path, context_length, vocab_size=vocab_size)
+        if dataset is None:
+            assert path is not None, "Either dataset or path must be provided"
+            self.dataset = RandomWindowDataset(path, context_length, vocab_size=vocab_size)
+        else:
+            self.dataset = dataset
+
         required_samples = self.max_iter * batch_size
 
         # Random sampler with replacement to mimic original random window sampling semantics
-        generator = torch.Generator()
-        if seed is not None:
-            generator.manual_seed(seed)
-        self.sampler = torch.utils.data.RandomSampler(
-            self.dataset, replacement=True, num_samples=required_samples, generator=generator
-        )
+        if sampler is None:
+            generator = torch.Generator()
+            if seed is not None:
+                generator.manual_seed(seed)
+            self.sampler = torch.utils.data.RandomSampler(
+                self.dataset, replacement=True, num_samples=required_samples, generator=generator
+            )
+        else:
+            self.sampler = sampler
 
         # Build underlying DataLoader
         loader_kwargs: dict = dict(

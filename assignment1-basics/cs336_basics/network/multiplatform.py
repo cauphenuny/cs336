@@ -31,6 +31,12 @@ def accl_device(id: int | None = None) -> str:
 
 ACCL_DEVICE = accl_device()
 
+if ACCL_TYPE == "cuda":
+    ACCL_BACKEND = "nccl"
+elif ACCL_TYPE == "npu":
+    ACCL_BACKEND = "hccl"
+else:
+    ACCL_BACKEND = "gloo"
 
 def get_accl_module():
     if ACCL_TYPE == "cuda":

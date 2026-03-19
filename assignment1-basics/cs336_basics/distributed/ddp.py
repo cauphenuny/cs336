@@ -15,6 +15,7 @@ class DDP(torch.nn.Module):
         self.sync_parameters()
         if register:
             self.register_hook()
+        self.registered = register
 
     def register_hook(self, hook=lambda x: sync(x)):
         for p in self.module.parameters():
@@ -29,7 +30,10 @@ class DDP(torch.nn.Module):
             if is_distributed():
                 dist.broadcast(p, src=0)
 
-    def sync_gradients(self):
+    def sync_gradients(self, force: bool = False):
+        if self.registered and not force:
+            return
+
         for p in self.module.parameters():
             if p.grad is not None:
                 sync(p.grad)
