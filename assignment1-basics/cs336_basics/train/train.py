@@ -13,11 +13,12 @@ from ..network.models import TransformerModel, specifications
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
-from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend
+from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend, ACCL_BACKEND
 from ..network import functional
-from .dataset import TextDataLoader, TorchTextDataLoader
+from .dataset import TextDataLoader, TorchTextDataLoader, RandomWindowDataset
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
 from ..distributed.utils import is_distributed, is_main_process
+from ..distributed.ddp import DDP, DistributedSampler
 
 parser = argparse.ArgumentParser()
 
@@ -48,6 +49,9 @@ parser.add_argument("--num_heads", type=int, default=16)
 parser.add_argument("--num_layers", type=int, default=4)
 
 parser.add_argument("--enable-wandb", action="store_true", default=False)
+parser.add_argument("--master_port", type=int, default=12355)
+parser.add_argument("--master_addr", type=str, default="localhost")
+parser.add_argument("--world_size", type=int, default=1)
 
 
 def convert_to_bool(value: str) -> bool:
@@ -104,11 +108,11 @@ def load_preset(
             parser.set_defaults(**{k: v})
 
 
-def main():
-    args = parser.parse_args()
-    if args.model_preset is not None:
-        load_preset(args.model_preset)
-        args = parser.parse_args()
+def main(rank: int, world_size: int, args):
+    os.environ["MASTER_ADDR"] = args.master_addr
+    os.environ["MASTER_PORT"] = str(args.master_port)
+    torch.distributed.init_process_group(ACCL_BACKEND, rank=rank, world_size=world_size)
+
     main_process = is_main_process()
     logger.info(f"Arguments: {vars(args)}")
     device = ACCL_DEVICE
@@ -121,6 +125,7 @@ def main():
 
     if wandb:
         wandb.login(key=os.environ["WANDB_API_KEY"])
+
     model_args = dict(
         vocab_size=args.vocab_size,
         context_length=args.context_length,
@@ -136,6 +141,8 @@ def main():
         ffn_activate="swiglu" if not args.use_silu else "silu",
     )
     model = TransformerModel(**model_args)
+    model = DDP(model, register=True)
+
     optimizer = AdamW(
         model.parameters(),
         lr=args.lr,
@@ -143,16 +150,24 @@ def main():
         eps=args.eps,
         weight_decay=args.weight_decay,
     )
-    train_loader = TorchTextDataLoader(
+
+    train_dataset = RandomWindowDataset(
         path=os.path.join(args.dataset, f"train-{args.vocab_size}.npy"),
+        context_length=args.context_length,
+        vocab_size=args.vocab_size,
+    )
+    train_sampler = DistributedSampler(train_dataset, shuffle=True, drop_last=True)
+    train_loader = TorchTextDataLoader(
+        dataset=train_dataset,
         context_length=args.context_length,
         batch_size=args.batch_size,
         limit=args.max_train_tokens,
         limit_type="total_tokens",
         vocab_size=args.vocab_size,
         num_workers=args.num_workers,
-        # device=device,
+        sampler=train_sampler,
     )
+
     val_loader = TorchTextDataLoader(
         path=os.path.join(args.dataset, f"valid-{args.vocab_size}.npy"),
         context_length=args.context_length,
@@ -161,8 +176,8 @@ def main():
         limit_type="train_steps",
         vocab_size=args.vocab_size,
         num_workers=args.num_workers,
-        # device=device,
     )
+
     lr_scheduler = CosineLRScheduler(
         optimizer,
         total_steps=len(train_loader),
@@ -304,4 +319,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parser.parse_args()
+    if args.model_preset is not None:
+        load_preset(args.model_preset)
+        args = parser.parse_args()
+
+    world_size = args.world_size
+    torch.multiprocessing.spawn(main, args=(world_size, args), nprocs=world_size, join=True)

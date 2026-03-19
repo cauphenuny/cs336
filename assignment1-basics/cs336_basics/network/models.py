@@ -176,9 +176,7 @@ def specifications(size: str):
         "large": dict(d_model=768, num_heads=16, num_layers=8),
         "x-large": dict(d_model=1024, num_heads=16, num_layers=16),
         "xx-large": dict(d_model=1536, num_heads=16, num_layers=24),
-        "3x-large": dict(d_model=2048, num_heads=16, num_layers=32),
-        "4x-large": dict(d_model=2560, num_heads=20, num_layers=40),
-        "5x-large": dict(d_model=3072, num_heads=24, num_layers=48),
+        "3x-large": dict(d_model=1600, d_ff=6400, num_heads=25, num_layers=48),
     }
     for name, args in presets.items():
         args["share_embeddings"] = True if name in ("nano", "micro", "tiny") else False
