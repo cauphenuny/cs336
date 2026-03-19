@@ -4,6 +4,7 @@ from .utils import is_distributed, is_main_process
 
 def sync(grad):
     if is_distributed():
+        grad = grad.contiguous()
         dist.all_reduce(grad, op=dist.ReduceOp.SUM)
         grad /= dist.get_world_size()
     return grad
