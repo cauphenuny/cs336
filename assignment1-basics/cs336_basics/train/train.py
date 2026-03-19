@@ -306,7 +306,7 @@ def main(rank: int, args):
 
                     with record_function("backward"):
                         loss.backward()
-                        model.sync_gradients()
+                        model.finish_gradient_synchronization()
 
                     with record_function("optimize"):
                         optimize.functional.gradient_clip(model.parameters(), 2.0)

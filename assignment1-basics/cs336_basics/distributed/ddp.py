@@ -2,13 +2,6 @@ import torch
 import torch.distributed as dist
 from .utils import is_distributed, is_main_process
 
-def sync(grad):
-    if is_distributed():
-        grad = grad.contiguous()
-        dist.all_reduce(grad, op=dist.ReduceOp.SUM)
-        grad /= dist.get_world_size()
-    return grad
-
 class DDP(torch.nn.Module):
     def __init__(self, module: torch.nn.Module, register: bool = True):
         super().__init__()
@@ -17,11 +10,30 @@ class DDP(torch.nn.Module):
         if register:
             self.register_hook()
         self.registered = register
+        self.async_handles = []
 
-    def register_hook(self, hook=lambda x: sync(x)):
+    def _sum(self, x):
+        if is_distributed():
+            x.grad = x.grad.contiguous()
+            handle = dist.all_reduce(x.grad, op=dist.ReduceOp.SUM, async_op=True)
+            self.async_handles.append(handle)
+        return x
+    
+    def _wait(self):
+        for handle in self.async_handles:
+            handle.wait()
+        self.async_handles = []
+    
+    def _div(self):
+        world_size = dist.get_world_size() if is_distributed() else 1
+        for p in self.module.parameters():
+            if p.grad is not None:
+                p.grad /= world_size
+
+    def register_hook(self):
         for p in self.module.parameters():
             if p.requires_grad:
-                p.register_hook(hook)
+                p.register_post_accumulate_grad_hook(lambda x: self._sum(x))
 
     def forward(self, *args, **kwargs):
         return self.module(*args, **kwargs)
@@ -31,13 +43,13 @@ class DDP(torch.nn.Module):
             if is_distributed():
                 dist.broadcast(p, src=0)
 
-    def sync_gradients(self, force: bool = False):
-        if self.registered and not force:
-            return
-
-        for p in self.module.parameters():
-            if p.grad is not None:
-                sync(p.grad)
+    def finish_gradient_synchronization(self):
+        if not self.registered:
+            for p in self.module.parameters():
+                if p.grad is not None:
+                    self._sum(p.grad)
+        self._wait()
+        self._div()
 
 class DistributedSampler(torch.utils.data.Sampler):
     def __init__(self, dataset: torch.utils.data.Dataset, shuffle: bool = True, drop_last: bool = False):
