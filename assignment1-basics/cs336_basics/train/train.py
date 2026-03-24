@@ -18,7 +18,7 @@ from ..network.models import TransformerModel, specifications
 from .. import optimize
 from ..optimize.optimizers import AdamW
 from ..optimize.lr_scheduler import CosineLRScheduler
-from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend, ACCL_BACKEND, accl_module
+from ..network.multiplatform import ACCL_DEVICE, profile, compile_backend, ACCL_BACKEND, accl_module, device_memory_usage
 from ..network import functional
 from .dataset import TextDataLoader, TorchTextDataLoader, RandomWindowDataset
 from .checkpoint import save_checkpoint, load_checkpoint, save_model
@@ -319,8 +319,11 @@ def main(rank: int, args):
                         prof.step()
 
                     iter_time = time.perf_counter() - iter_start
-                    pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}",
-                                     lr=f"{current_lr:.3e}", iter_time=f"{iter_time:.3f}s")
+                    pbar.set_postfix(
+                        loss=f"{train_loss:.3f}",
+                        grad=f"{grad:.3e}",
+                        lr=f"{current_lr:.3e}",
+                    )
                     if step % args.log_interval == 0:
                         grad = optimize.functional.gradient_norm(model.parameters()).cpu()
                         train_loss = loss.cpu()
@@ -330,16 +333,11 @@ def main(rank: int, args):
                                     "train_loss": train_loss,
                                     "grad": grad,
                                     "lr": current_lr,
-                                    "iter_time": iter_time,
+                                    "System/Time per Iteration": iter_time,
+                                    "System/Allocated Device Memory": device_memory_usage(),
                                 },
                                 step=step,
                             )
-                        pbar.set_postfix(
-                            loss=f"{train_loss:.3f}",
-                            grad=f"{grad:.3e}",
-                            lr=f"{current_lr:.3e}",
-                            iter_time=f"{iter_time:.3f}s",
-                        )
 
                     if (step + 1) % args.val_interval == 0:
                         validate()

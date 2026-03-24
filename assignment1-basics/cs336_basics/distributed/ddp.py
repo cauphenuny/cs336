@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+import types
 from loguru import logger
 from .utils import is_distributed, is_main_process
 
@@ -10,6 +11,15 @@ class DDP(torch.nn.Module):
         self.module = module
         self.async_handles = []
         self._sync_parameters()
+
+        def _remove_requires_grad(_self, _x):
+            raise NotImplementedError("DDP managed module can not set requires_grad")
+
+        for submodule in self.modules():
+            submodule.requires_grad_ = types.MethodType(_remove_requires_grad, submodule)
+
+        for param in self.parameters():
+            param.requires_grad_ = types.MethodType(_remove_requires_grad, param)
 
         world_size = dist.get_world_size() if is_distributed() else 1
 
