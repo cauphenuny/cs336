@@ -52,7 +52,7 @@ class DDP(torch.nn.Module):
 
             for bid, bucket in enumerate(buckets):
 
-                def grad_hook(x):
+                def grad_hook(x, bid=bid, bucket=bucket):
                     self.complete_count[bid] += 1
                     if self.complete_count[bid] == len(bucket):
                         flatten = torch._utils._flatten_dense_tensors(
@@ -60,7 +60,7 @@ class DDP(torch.nn.Module):
                         handle = dist.all_reduce(
                             flatten, op=dist.ReduceOp.SUM, async_op=True)
 
-                        def callback():
+                        def callback(world_size=world_size, bucket=bucket, flatten=flatten):
                             grads = torch._utils._unflatten_dense_tensors(
                                 flatten, [p.grad for p in bucket])
                             for x, g in zip(bucket, grads):
