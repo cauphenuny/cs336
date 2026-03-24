@@ -1,58 +1,103 @@
 import torch
 import torch.distributed as dist
+from loguru import logger
 from .utils import is_distributed, is_main_process
 
+
 class DDP(torch.nn.Module):
-    def __init__(self, module: torch.nn.Module, register: bool = True):
+    def __init__(self, module: torch.nn.Module, bucket_size_mb: float | None = None):
         super().__init__()
         self.module = module
-        self.sync_parameters()
-        if register:
-            self.register_hook()
-        self.registered = register
         self.async_handles = []
+        self._sync_parameters()
 
-    def _sum(self, x):
-        if is_distributed():
-            x.grad = x.grad.contiguous()
-            handle = dist.all_reduce(x.grad, op=dist.ReduceOp.SUM, async_op=True)
-            self.async_handles.append(handle)
-        return x
-    
-    def _wait(self):
-        for handle in self.async_handles:
-            handle.wait()
-        self.async_handles = []
-    
-    def _div(self):
         world_size = dist.get_world_size() if is_distributed() else 1
-        for p in self.module.parameters():
-            if p.grad is not None:
-                p.grad /= world_size
 
-    def register_hook(self):
-        for p in self.module.parameters():
-            if p.requires_grad:
-                p.register_post_accumulate_grad_hook(lambda x: self._sum(x))
+        if bucket_size_mb is None:
+
+            def grad_hook(x):
+                handle = dist.all_reduce(
+                    x.grad, op=dist.ReduceOp.SUM, async_op=True)
+
+                def callback():
+                    x.grad /= dist.get_world_size()
+
+                self.async_handles.append((handle, callback))
+                return x
+
+            for param in self.module.parameters():
+                if param.requires_grad:
+                    param.register_post_accumulate_grad_hook(grad_hook)
+
+        else:
+            buckets = []
+            bucket = []
+            current_size = 0
+            for param in reversed(list(self.module.parameters())):
+                if not param.requires_grad:
+                    continue
+                size = param.numel() * param.element_size() / (1024 * 1024)
+                if current_size + size > bucket_size_mb:
+                    buckets.append(bucket)
+                    bucket = []
+                    current_size = 0
+                current_size += size
+                bucket.append(param)
+            if bucket:
+                buckets.append(bucket)
+
+            logger.info(
+                f"DDP initialized with {len(buckets)} buckets, bucket size: {bucket_size_mb} MB")
+            self.complete_count = [0] * len(buckets)
+
+            for bid, bucket in enumerate(buckets):
+
+                def grad_hook(x):
+                    self.complete_count[bid] += 1
+                    if self.complete_count[bid] == len(bucket):
+                        flatten = torch._utils._flatten_dense_tensors(
+                            [p.grad for p in bucket])
+                        handle = dist.all_reduce(
+                            flatten, op=dist.ReduceOp.SUM, async_op=True)
+
+                        def callback():
+                            grads = torch._utils._unflatten_dense_tensors(
+                                flatten, [p.grad for p in bucket])
+                            for x, g in zip(bucket, grads):
+                                x.grad.copy_(g / world_size)
+
+                        self.async_handles.append((handle, callback))
+                        self.complete_count[bid] = 0
+                    return x
+
+                for param in bucket:
+                    param.register_post_accumulate_grad_hook(grad_hook)
+
+    def _wait(self):
+        for handle, callback in self.async_handles:
+            handle.wait()
+            callback()
+        self.async_handles = []
 
     def forward(self, *args, **kwargs):
         return self.module(*args, **kwargs)
 
-    def sync_parameters(self):
+    def _sync_parameters(self):
         for p in self.module.parameters():
             if is_distributed():
                 dist.broadcast(p, src=0)
 
     def finish_gradient_synchronization(self):
-        if not self.registered:
-            for p in self.module.parameters():
-                if p.grad is not None:
-                    self._sum(p.grad)
         self._wait()
-        self._div()
+
 
 class DistributedSampler(torch.utils.data.Sampler):
-    def __init__(self, dataset: torch.utils.data.Dataset, shuffle: bool = True, drop_last: bool = False):
+    def __init__(
+        self,
+        dataset: torch.utils.data.Dataset,
+        shuffle: bool = True,
+        drop_last: bool = False,
+    ):
         if not hasattr(dataset, "__len__"):
             raise TypeError(
                 "DistributedSampler requires a map-style dataset with __len__. "
@@ -70,19 +115,21 @@ class DistributedSampler(torch.utils.data.Sampler):
             self.world_size = 1
             self.rank = 0
 
-        dataset_size = len(self.dataset) # type: ignore
+        dataset_size = len(self.dataset)  # type: ignore
         if self.drop_last:
             self.num_samples = dataset_size // self.world_size
         else:
-            self.num_samples = (dataset_size + self.world_size - 1) // self.world_size
+            self.num_samples = (
+                dataset_size + self.world_size - 1) // self.world_size
         self.total_size = self.num_samples * self.world_size
 
     def __iter__(self):
-        indices = list(range(len(self.dataset))) # type: ignore
+        indices = list(range(len(self.dataset)))  # type: ignore
         if self.shuffle:
             g = torch.Generator()
             g.manual_seed(self.epoch)
-            indices = torch.randperm(len(self.dataset), generator=g).tolist() # type: ignore
+            indices = torch.randperm(
+                len(self.dataset), generator=g).tolist()  # type: ignore
 
         if not self.drop_last:
             padding_size = self.total_size - len(indices)

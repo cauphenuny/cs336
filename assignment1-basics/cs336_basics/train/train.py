@@ -12,6 +12,7 @@ from tqdm import tqdm
 from typing import Literal
 from datetime import datetime
 from torch.profiler import record_function
+import time
 
 from ..network.models import TransformerModel, specifications
 from .. import optimize
@@ -56,7 +57,8 @@ parser.add_argument("--enable-wandb", action="store_true", default=False)
 parser.add_argument("--master_port", type=int, default=12355)
 parser.add_argument("--master_addr", type=str, default="localhost")
 parser.add_argument("--world_size", type=int, default=accl_module.device_count())
-parser.add_argument("--without_ddp_hook", action="store_true", default=False)
+parser.add_argument("--grad_bucket_size", type=float, default=None,
+                    help="Bucket size in MB for gradient synchronization. If not set, synchronize each parameter separately.")
 
 
 def convert_to_bool(value: str) -> bool:
@@ -151,7 +153,7 @@ def main(rank: int, args):
         ffn_activate="swiglu" if not args.use_silu else "silu",
     )
     model = TransformerModel(**model_args)
-    model = DDP(model, register=not args.without_ddp_hook)
+    model = DDP(model, bucket_size_mb=args.grad_bucket_size)
 
     optimizer = AdamW(
         model.parameters(),
@@ -295,6 +297,7 @@ def main(rank: int, args):
                 train_loss = float("nan")
                 grad = float("nan")
                 for step, (input, target) in enumerate(pbar, start=start_iter):
+                    iter_start = time.perf_counter()
                     current_lr = lr_scheduler.update(step)
                     optimizer.zero_grad()
 
@@ -315,16 +318,28 @@ def main(rank: int, args):
                     if prof:
                         prof.step()
 
-                    pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
+                    iter_time = time.perf_counter() - iter_start
+                    pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}",
+                                     lr=f"{current_lr:.3e}", iter_time=f"{iter_time:.3f}s")
                     if step % args.log_interval == 0:
                         grad = optimize.functional.gradient_norm(model.parameters()).cpu()
                         train_loss = loss.cpu()
                         if wandb:
                             wandb.log(
-                                {"train_loss": train_loss, "grad": grad, "lr": current_lr},
+                                {
+                                    "train_loss": train_loss,
+                                    "grad": grad,
+                                    "lr": current_lr,
+                                    "iter_time": iter_time,
+                                },
                                 step=step,
                             )
-                        pbar.set_postfix(loss=f"{train_loss:.3f}", grad=f"{grad:.3e}", lr=f"{current_lr:.3e}")
+                        pbar.set_postfix(
+                            loss=f"{train_loss:.3f}",
+                            grad=f"{grad:.3e}",
+                            lr=f"{current_lr:.3e}",
+                            iter_time=f"{iter_time:.3f}s",
+                        )
 
                     if (step + 1) % args.val_interval == 0:
                         validate()
